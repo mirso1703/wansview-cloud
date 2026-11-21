@@ -26,8 +26,7 @@ class Motion(WansviewEntity, BinarySensorEntity):
     @property
     def extra_state_attributes(self):
         ev = self.cam.get("event") or {}
-        return {"last_event": ts_to_dt(ev.get("ts")), "event_image": ev.get("url"), "source": ev.get("source"),
-                "tags": ev.get("tags")}
+        return {"last_event": ts_to_dt(ev.get("ts")), "event_image": ev.get("url"), "source": ev.get("source")}
 
 
 class Online(WansviewEntity, BinarySensorEntity):

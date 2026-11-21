@@ -167,26 +167,34 @@ class WansviewCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 except WansviewError as err:
                     _LOGGER.debug("fetch-infos retry failed: %s", err)
         self.last_raw["fetch_infos"] = infos
+        for did, info in infos.items():
+            alias = ((info.get("base") or {}).get("aliasName") or "").strip()
+            if alias and did in self.cameras:
+                self.cameras[did]["name"] = alias
         now = time.time()
 
-        # 1) motion alarms from the EMC service
+        # 1) motion alarms: alarms-survey returns the account's latest alarm(s), each with its "did"
+        emcs: dict[str, str] = {}
         for did, cam in self.cameras.items():
-            if not cam.get("emc"):
-                continue
+            if cam.get("emc"):
+                emcs.setdefault(cam["emc"], did)
+        for emc, any_did in emcs.items():
             try:
-                alarms = await self.api.alarms(cam["emc"], did)
+                alarms = await self.api.alarms(emc, any_did)
             except WansviewError as err:
-                _LOGGER.debug("alarms-survey %s failed: %s", did, err)
+                _LOGGER.debug("alarms-survey %s failed: %s", emc, err)
                 continue
-            self.last_raw.setdefault("alarms", {})[did] = alarms[:3]
+            self.last_raw.setdefault("alarms", {})[emc] = alarms[:5]
             for a in alarms:
+                did = a.get("did")
                 ts = _to_ts(a.get("cts"))
-                if not ts or ts <= self.last_event.get(did, {}).get("ts", 0):
+                if did not in self.cameras or not ts or ts <= self.last_event.get(did, {}).get("ts", 0):
                     continue
                 imgs = a.get("images") or []
-                url = next((i.get("url") for i in imgs if isinstance(i, dict) and i.get("url")), None)
+                url = next((i.get("url") for i in imgs if isinstance(i, dict) and i.get("url")
+                            and "thumb" not in str(i.get("tags", ""))), None) or next(
+                    (i.get("url") for i in imgs if isinstance(i, dict) and i.get("url")), None)
                 self.last_event[did] = {"did": did, "ts": ts, "url": url, "source": "alarm",
-                                        "tags": ",".join(i.get("tags", "") for i in imgs if isinstance(i, dict)),
                                         "duration": _num(a.get("dur"))}
 
         # 2) fallback: a new alarm snapshot shows up in the device info
