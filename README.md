@@ -6,4 +6,4 @@ Per camera: motion, last motion time, last snapshot (image), battery, Wi-Fi sign
 
 Install: Marketplace/HACS → custom repository → `mirso1703/wansview-cloud` (Integration), restart, then add **Wansview Cloud** and sign in with your app account.
 
-Protocol details are based on the public AJCloud research by Elastic Security Labs (github.com/elastic/camera-hacks).
+Protocol: NaCl-box sign-in and HMAC-SHA256 signed requests (see Elastic Security Labs research and the colivinglemans-prog/coliving-barbusse AJCloud client).

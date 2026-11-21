@@ -18,8 +18,8 @@ RAW_SCHEMA = vol.Schema({
     vol.Required("url"): cv.string,
     vol.Optional("data", default={}): dict,
     vol.Optional("entry_id"): cv.string,
-    vol.Optional("header", default=True): cv.boolean,
-    vol.Optional("body"): dict,
+    vol.Optional("device_id"): cv.string,
+    vol.Optional("signed", default=True): cv.boolean,
 })
 
 
@@ -54,7 +54,7 @@ def _register_services(hass: HomeAssistant) -> None:
                 url = f"{c.api.uac_url}{url}"
             try:
                 return {"url": url, "response": await c.api.raw(url, call.data.get("data") or {},
-                                                                 call.data["header"], call.data.get("body"))}
+                                                                 call.data.get("device_id"), call.data["signed"])}
             except Exception as err:  # noqa: BLE001
                 return {"url": url, "error": repr(err)}
 

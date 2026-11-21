@@ -101,28 +101,30 @@ class WansviewCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         return int(self.entry.options.get(CONF_MOTION_HOLD, DEFAULT_MOTION_HOLD))
 
     async def _load_devices(self) -> None:
-        res = await self.api.device_list()
-        self.last_raw["device_list"] = res
-        gens = {g["deviceId"]: g for g in res.get("devGenerals", [])}
+        items = await self.api.device_list()
+        self.last_raw["device_list"] = items
         cams: dict[str, dict[str, Any]] = {}
-        for d in res.get("conDevices", []):
-            did = d["deviceId"]
-            g = gens.get(did, {})
-            ctx: dict[str, Any] = {}
-            try:
-                ctx = json.loads(g.get("context") or "{}").get("config", {})
-            except ValueError:
-                pass
-            is_share = bool(d.get("conType")) or d.get("bindStatus") not in (None, "binded")
+        for d in items:
+            did = str(d.get("deviceId"))
+            ctx = d.get("context") or {}
+            if isinstance(ctx, str):
+                try:
+                    ctx = json.loads(ctx or "{}")
+                except ValueError:
+                    ctx = {}
+            cfg = ctx.get("config", {}) if isinstance(ctx, dict) else {}
             cams[did] = {
-                "shared": is_share,
-                "name": d.get("aliasName") or did,
-                "model": g.get("prodName") or g.get("deviceMode"),
-                "vendor": g.get("vendorCode"),
-                "gateway": ctx.get("appGatewayUrl") or "https://cam-gw.ajcloud.net/api",
-                "emc": ctx.get("appEmcUrl"),
-                "cloud": ctx.get("appCloudStorUrl"),
+                "shared": bool(d.get("conType")) or d.get("bindStatus") not in (None, "binded"),
+                "name": (d.get("aliasName") or d.get("deviceName") or did).strip(),
+                "model": d.get("prodName") or d.get("deviceMode"),
+                "vendor": d.get("vendorCode"),
+                "con_online": d.get("conStatus") == 1,
+                "gateway": cfg.get("appGatewayUrl"),
+                "emc": cfg.get("appEmcUrl"),
             }
+        gw = next((c["gateway"] for c in cams.values() if c["gateway"]), None)
+        for c in cams.values():
+            c["gateway"] = c["gateway"] or gw
         self.cameras = cams
         self._devlist_at = time.time()
 
@@ -140,11 +142,17 @@ class WansviewCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             await self._load_devices()
         by_gw: dict[str, list[str]] = {}
         for did, c in self.cameras.items():
-            by_gw.setdefault(c["gateway"], []).append(did)
+            if c.get("gateway"):
+                by_gw.setdefault(c["gateway"], []).append(did)
         infos: dict[str, dict[str, Any]] = {}
         for gw, dids in by_gw.items():
             shared = {d for d in dids if self.cameras[d].get("shared")}
-            for it in await self.api.fetch_infos(gw, dids, shared):
+            try:
+                fetched = await self.api.fetch_infos(gw, dids, shared)
+            except WansviewError as err:
+                _LOGGER.debug("fetch-infos failed: %s", err)
+                fetched = []
+            for it in fetched:
                 infos[it.get("did") or it.get("deviceId")] = it.get("info") or {}
             # retry the missing ones with the opposite share flag
             missing = [d for d in dids if not infos.get(d)]
@@ -161,21 +169,25 @@ class WansviewCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.last_raw["fetch_infos"] = infos
         now = time.time()
 
-        # 1) real alarm list, once the endpoint is known (option event_path, e.g. "/v1/xyz")
-        path = self.entry.options.get(CONF_EVENT_PATH)
-        if path:
-            for did, c in self.cameras.items():
-                base = c.get("emc") or ""
-                url = path if path.startswith("http") else f"{base}{path}"
-                try:
-                    js = await self.api.raw(url, {"deviceId": did, "did": did, "limit": 5, "pageSize": 5})
-                except WansviewError as err:
-                    _LOGGER.debug("event query failed: %s", err)
+        # 1) motion alarms from the EMC service
+        for did, cam in self.cameras.items():
+            if not cam.get("emc"):
+                continue
+            try:
+                alarms = await self.api.alarms(cam["emc"], did)
+            except WansviewError as err:
+                _LOGGER.debug("alarms-survey %s failed: %s", did, err)
+                continue
+            self.last_raw.setdefault("alarms", {})[did] = alarms[:3]
+            for a in alarms:
+                ts = _to_ts(a.get("cts"))
+                if not ts or ts <= self.last_event.get(did, {}).get("ts", 0):
                     continue
-                self.last_raw.setdefault("events", {})[did] = js
-                for ev in parse_events(js.get("result")):
-                    if ev["did"] == did and ev["ts"] > self.last_event.get(did, {}).get("ts", 0):
-                        self.last_event[did] = {**ev, "source": "alarm_list"}
+                imgs = a.get("images") or []
+                url = next((i.get("url") for i in imgs if isinstance(i, dict) and i.get("url")), None)
+                self.last_event[did] = {"did": did, "ts": ts, "url": url, "source": "alarm",
+                                        "tags": ",".join(i.get("tags", "") for i in imgs if isinstance(i, dict)),
+                                        "duration": _num(a.get("dur"))}
 
         # 2) fallback: a new alarm snapshot shows up in the device info
         for did, info in infos.items():
@@ -197,7 +209,7 @@ class WansviewCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             ev = self.last_event.get(did)
             data[did] = {
                 **c,
-                "online": str(base.get("onlineStatus")) == "1" if base else None,
+                "online": (str(base.get("onlineStatus")) in ("1", "2")) if base else c.get("con_online"),
                 "fw": base.get("fwVersion"),
                 "wifi": _num(net.get("wifiSignal")),
                 "rssi": _num(net.get("wifiRssi")),

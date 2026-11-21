@@ -54,5 +54,4 @@ class OptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(step_id="init", data_schema=vol.Schema({
             vol.Optional(CONF_MOTION_HOLD, default=o.get(CONF_MOTION_HOLD, DEFAULT_MOTION_HOLD)):
                 vol.All(int, vol.Range(min=10, max=900)),
-            vol.Optional(CONF_EVENT_PATH, description={"suggested_value": o.get(CONF_EVENT_PATH, "")}): str,
         }))
