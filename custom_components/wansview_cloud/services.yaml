@@ -1,0 +1,10 @@
+raw_request:
+  fields:
+    url:
+      required: true
+      example: "/v2/device-list"
+      selector:
+        text:
+    data:
+      selector:
+        object:

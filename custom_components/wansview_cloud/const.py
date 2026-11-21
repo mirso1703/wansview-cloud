@@ -1,0 +1,10 @@
+DOMAIN = "wansview_cloud"
+PLATFORMS = ["binary_sensor", "sensor", "image"]
+CONF_AGENT_TOKEN = "agent_token"
+CONF_EVENT_PATH = "event_path"
+CONF_MOTION_HOLD = "motion_hold"
+DEFAULT_SCAN = 30
+DEFAULT_MOTION_HOLD = 90
+VENDOR = "WVC"
+PORTAL_SDC = "https://sdc-portal.ajcloud.net/api"
+PORTAL_UAC = "https://uac-portal.ajcloud.net/api"
