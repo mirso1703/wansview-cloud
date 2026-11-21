@@ -113,7 +113,9 @@ class WansviewCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 ctx = json.loads(g.get("context") or "{}").get("config", {})
             except ValueError:
                 pass
+            is_share = bool(d.get("conType")) or d.get("bindStatus") not in (None, "binded")
             cams[did] = {
+                "shared": is_share,
                 "name": d.get("aliasName") or did,
                 "model": g.get("prodName") or g.get("deviceMode"),
                 "vendor": g.get("vendorCode"),
@@ -141,8 +143,21 @@ class WansviewCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             by_gw.setdefault(c["gateway"], []).append(did)
         infos: dict[str, dict[str, Any]] = {}
         for gw, dids in by_gw.items():
-            for it in await self.api.fetch_infos(gw, dids):
+            shared = {d for d in dids if self.cameras[d].get("shared")}
+            for it in await self.api.fetch_infos(gw, dids, shared):
                 infos[it.get("did") or it.get("deviceId")] = it.get("info") or {}
+            # retry the missing ones with the opposite share flag
+            missing = [d for d in dids if not infos.get(d)]
+            if missing:
+                flipped = {d for d in missing if d not in shared}
+                try:
+                    for it in await self.api.fetch_infos(gw, missing, flipped):
+                        did = it.get("did") or it.get("deviceId")
+                        if it.get("info"):
+                            infos[did] = it["info"]
+                            self.cameras[did]["shared"] = did in flipped
+                except WansviewError as err:
+                    _LOGGER.debug("fetch-infos retry failed: %s", err)
         self.last_raw["fetch_infos"] = infos
         now = time.time()
 

@@ -117,8 +117,9 @@ class WansviewApi:
         await self.ensure_token()
         return self._ok(await self._post(f"{self.uac_url}/v2/device-list", {}), "device-list")
 
-    async def fetch_infos(self, gateway: str, dids: list[str]) -> list[dict[str, Any]]:
+    async def fetch_infos(self, gateway: str, dids: list[str], shared: set[str] | None = None) -> list[dict[str, Any]]:
         await self.ensure_token()
-        devs = [{"did": d, "deviceType": 1, "isShare": False, "scopes": []} for d in dids]
+        shared = shared or set()
+        devs = [{"did": d, "deviceType": 1, "isShare": d in shared, "scopes": []} for d in dids]
         res = self._ok(await self._post(f"{gateway}/v1/fetch-infos", {"devices": devs}), "fetch-infos")
         return res.get("infos", [])
