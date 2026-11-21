@@ -26,7 +26,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             api = WansviewApi(async_get_clientsession(self.hass), username, user_input[CONF_PASSWORD], token)
             try:
                 await api.login()
-                await api.device_list()
             except WansviewAuthError as err:
                 errors["base"] = "invalid_auth"
                 placeholders["detail"] = str(err)

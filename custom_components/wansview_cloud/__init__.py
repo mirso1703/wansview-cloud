@@ -18,6 +18,8 @@ RAW_SCHEMA = vol.Schema({
     vol.Required("url"): cv.string,
     vol.Optional("data", default={}): dict,
     vol.Optional("entry_id"): cv.string,
+    vol.Optional("header", default=True): cv.boolean,
+    vol.Optional("body"): dict,
 })
 
 
@@ -25,14 +27,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     api = WansviewApi(async_get_clientsession(hass), entry.data[CONF_USERNAME],
                       entry.data[CONF_PASSWORD], entry.data[CONF_AGENT_TOKEN])
     coord = WansviewCoordinator(hass, api, entry)
-    await coord.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coord
+    _register_services(hass)
+    try:
+        await coord.async_config_entry_first_refresh()
+    except Exception:
+        # keep the api reachable for the diagnostic service while HA retries setup
+        hass.data.setdefault(f"{DOMAIN}_pending", {})[entry.entry_id] = coord
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+        raise
+    hass.data.get(f"{DOMAIN}_pending", {}).pop(entry.entry_id, None)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_reload))
+    return True
 
+
+def _register_services(hass: HomeAssistant) -> None:
     if not hass.services.has_service(DOMAIN, "raw_request"):
         async def raw_request(call: ServiceCall):
-            coords = hass.data.get(DOMAIN, {})
+            coords = {**hass.data.get(f"{DOMAIN}_pending", {}), **hass.data.get(DOMAIN, {})}
             c = coords.get(call.data.get("entry_id")) or next(iter(coords.values()), None)
             if c is None:
                 raise HomeAssistantError("no Wansview account loaded")
@@ -40,13 +53,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if not url.startswith("http"):
                 url = f"{c.api.uac_url}{url}"
             try:
-                return {"url": url, "response": await c.api.raw(url, call.data.get("data") or {})}
-            except WansviewError as err:
-                return {"url": url, "error": str(err)}
+                return {"url": url, "response": await c.api.raw(url, call.data.get("data") or {},
+                                                                 call.data["header"], call.data.get("body"))}
+            except Exception as err:  # noqa: BLE001
+                return {"url": url, "error": repr(err)}
 
         hass.services.async_register(DOMAIN, "raw_request", raw_request, schema=RAW_SCHEMA,
                                      supports_response=SupportsResponse.ONLY)
-    return True
 
 
 async def _reload(hass: HomeAssistant, entry: ConfigEntry) -> None:

@@ -52,10 +52,10 @@ class WansviewApi:
             m["accessToken"] = self.access_token
         return m
 
-    async def _post(self, url: str, data: dict[str, Any], auth: bool = True) -> dict[str, Any]:
+    async def _post(self, url: str, data: dict[str, Any], auth: bool = True, header: bool = True) -> dict[str, Any]:
         body = {"meta": self._meta(auth), "data": {**self._base(), **data}}
         headers = {"Content-Type": "application/json"}
-        if auth and self.access_token:
+        if auth and header and self.access_token:
             headers["Authorization"] = f"Bearer {self.access_token}"
         async with self._s.post(url, json=body, headers=headers, timeout=aiohttp.ClientTimeout(total=20)) as r:
             try:
@@ -64,9 +64,17 @@ class WansviewApi:
                 raise WansviewError(f"{url}: HTTP {r.status}") from err
         return js
 
-    async def raw(self, url: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def raw(self, url: str, data: dict[str, Any] | None = None, header: bool = True,
+                  body: dict[str, Any] | None = None) -> dict[str, Any]:
         await self.ensure_token()
-        return await self._post(url, data or {})
+        if body is None:
+            return await self._post(url, data or {}, True, header)
+        body = {**body, "meta": {**self._meta(True), **(body.get("meta") or {})}}
+        headers = {"Content-Type": "application/json"}
+        if header:
+            headers["Authorization"] = f"Bearer {self.access_token}"
+        async with self._s.post(url, json=body, headers=headers, timeout=aiohttp.ClientTimeout(total=20)) as r:
+            return {"http": r.status, "json": await r.json(content_type=None)}
 
     @staticmethod
     def _ok(js: dict[str, Any], what: str) -> dict[str, Any]:
@@ -114,8 +122,24 @@ class WansviewApi:
         await self.login()
 
     async def device_list(self) -> dict[str, Any]:
+        """device-list; tries a few request variants because the API answers 1100 on mismatches."""
         await self.ensure_token()
-        return self._ok(await self._post(f"{self.uac_url}/v2/device-list", {}), "device-list")
+        attempts = [
+            ("v2", {}, True), ("v2", {}, False),
+            ("v2", {"agentToken": self.agent_token}, False),
+            ("v1", {}, False), ("v1", {"agentToken": self.agent_token}, True),
+        ]
+        if getattr(self, "_devlist_variant", None) is not None:
+            attempts.insert(0, attempts[self._devlist_variant])
+        last: dict[str, Any] = {}
+        for i, (ver, extra, header) in enumerate(attempts):
+            js = await self._post(f"{self.uac_url}/{ver}/device-list", extra, True, header)
+            if js.get("status") == "ok":
+                self._devlist_variant = i if getattr(self, "_devlist_variant", None) is None else self._devlist_variant
+                return js.get("result") or {}
+            last = js
+            _LOGGER.debug("device-list %s/%s/%s -> %s", ver, extra, header, js)
+        raise WansviewError(f"device-list: {last.get('code')} {last.get('message')}")
 
     async def fetch_infos(self, gateway: str, dids: list[str], shared: set[str] | None = None) -> list[dict[str, Any]]:
         await self.ensure_token()
