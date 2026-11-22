@@ -9,7 +9,8 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import WansviewApi, WansviewAuthError, WansviewError
-from .const import CONF_AGENT_TOKEN, CONF_EVENT_PATH, CONF_MOTION_HOLD, DEFAULT_MOTION_HOLD, DOMAIN
+from .const import (CONF_AGENT_TOKEN, CONF_MOTION_HOLD, CONF_NVR, CONF_RETENTION, DEFAULT_MOTION_HOLD,
+                    DEFAULT_RETENTION, DOMAIN)
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -54,4 +55,7 @@ class OptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(step_id="init", data_schema=vol.Schema({
             vol.Optional(CONF_MOTION_HOLD, default=o.get(CONF_MOTION_HOLD, DEFAULT_MOTION_HOLD)):
                 vol.All(int, vol.Range(min=10, max=900)),
+            vol.Optional(CONF_NVR, default=o.get(CONF_NVR, True)): bool,
+            vol.Optional(CONF_RETENTION, default=o.get(CONF_RETENTION, DEFAULT_RETENTION)):
+                vol.All(int, vol.Range(min=1, max=365)),
         }))

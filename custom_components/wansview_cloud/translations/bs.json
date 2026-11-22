@@ -4,40 +4,77 @@
       "user": {
         "title": "Wansview Cloud",
         "description": "Prijava istim nalogom kao u aplikaciji Wansview Cloud. {detail}",
-        "data": {"username": "E-mail", "password": "Lozinka"}
+        "data": {
+          "username": "E-mail",
+          "password": "Lozinka"
+        }
       }
     },
     "error": {
       "invalid_auth": "Pogrešan e-mail ili lozinka.",
       "cannot_connect": "Nije moguće spojiti se na Wansview Cloud."
     },
-    "abort": {"already_configured": "Ovaj nalog je već dodan."}
+    "abort": {
+      "already_configured": "Ovaj nalog je već dodan."
+    }
   },
   "options": {
     "step": {
       "init": {
         "data": {
           "motion_hold": "Koliko sekundi senzor ostaje 'pokret' nakon alarma",
-          "event_path": "API putanja liste alarma (napredno)"
+          "nvr": "Snimaj sve alarme lokalno (slika + video u /media/wansview)",
+          "retention_days": "Koliko dana čuvati snimke"
         }
       }
     }
   },
   "entity": {
-    "binary_sensor": {"motion": {"name": "Pokret"}, "online": {"name": "Online"}},
-    "sensor": {
-      "battery": {"name": "Baterija"},
-      "wifi_signal": {"name": "WiFi signal"},
-      "wifi_rssi": {"name": "WiFi RSSI"},
-      "last_motion": {"name": "Zadnji pokret"}
+    "binary_sensor": {
+      "motion": {
+        "name": "Pokret"
+      },
+      "online": {
+        "name": "Online"
+      }
     },
-    "image": {"snapshot": {"name": "Zadnja slika"}}
+    "sensor": {
+      "battery": {
+        "name": "Baterija"
+      },
+      "wifi_signal": {
+        "name": "WiFi signal"
+      },
+      "wifi_rssi": {
+        "name": "WiFi RSSI"
+      },
+      "last_motion": {
+        "name": "Zadnji pokret"
+      },
+      "recordings_today": {
+        "name": "Snimci danas"
+      }
+    },
+    "image": {
+      "snapshot": {
+        "name": "Zadnja slika"
+      }
+    }
   },
   "services": {
     "raw_request": {
       "name": "Sirovi API poziv",
       "description": "Dijagnostika: POST na AJCloud API sa prijavljenim nalogom.",
-      "fields": {"url": {"name": "URL", "description": "Puni URL ili putanja na UAC serveru"}, "data": {"name": "Data", "description": "Polja za 'data'"}}
+      "fields": {
+        "url": {
+          "name": "URL",
+          "description": "Puni URL ili putanja na UAC serveru"
+        },
+        "data": {
+          "name": "Data",
+          "description": "Polja za 'data'"
+        }
+      }
     }
   }
 }

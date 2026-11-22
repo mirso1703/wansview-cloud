@@ -14,6 +14,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     for did in coord.cameras:
         ents += [Battery(coord, did, "battery"), Wifi(coord, did, "wifi_signal"),
                  Rssi(coord, did, "wifi_rssi"), LastMotion(coord, did, "last_motion")]
+        if coord.nvr:
+            ents.append(Recordings(coord, did, "recordings_today"))
     async_add_entities(ents)
 
 
@@ -60,3 +62,16 @@ class LastMotion(WansviewEntity, SensorEntity):
     @property
     def native_value(self):
         return ts_to_dt((self.cam.get("event") or {}).get("ts"))
+
+
+class Recordings(WansviewEntity, SensorEntity):
+    _attr_icon = "mdi:filmstrip-box-multiple"
+    _attr_native_unit_of_measurement = "snimaka"
+
+    @property
+    def native_value(self):
+        return self.cam.get("recordings_today")
+
+    @property
+    def extra_state_attributes(self):
+        return {"last_video": self.cam.get("last_video"), "folder": "/media/wansview"}

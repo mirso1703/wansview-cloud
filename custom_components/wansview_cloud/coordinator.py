@@ -11,7 +11,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import WansviewApi, WansviewAuthError, WansviewError
-from .const import CONF_EVENT_PATH, CONF_MOTION_HOLD, DEFAULT_MOTION_HOLD, DEFAULT_SCAN, DOMAIN
+from .const import (CONF_MOTION_HOLD, CONF_NVR, CONF_RETENTION, DEFAULT_MOTION_HOLD, DEFAULT_RETENTION,
+                    DEFAULT_SCAN, DOMAIN)
+from .nvr import Nvr
 
 _LOGGER = logging.getLogger(__name__)
 DEVLIST_EVERY = 1800
@@ -95,6 +97,9 @@ class WansviewCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self._fallback: dict[str, str] = {}
         self.last_event: dict[str, dict[str, Any]] = {}
         self.last_raw: dict[str, Any] = {}
+        self.nvr = Nvr(hass, int(entry.options.get(CONF_RETENTION, DEFAULT_RETENTION))) \
+            if entry.options.get(CONF_NVR, True) else None
+        self._nvr_seeded = False
 
     @property
     def hold(self) -> int:
@@ -190,12 +195,22 @@ class WansviewCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 ts = _to_ts(a.get("cts"))
                 if did not in self.cameras or not ts or ts <= self.last_event.get(did, {}).get("ts", 0):
                     continue
+                if self.nvr:
+                    self.nvr.add_alarm(self.cameras[did]["name"], a)
                 imgs = a.get("images") or []
                 url = next((i.get("url") for i in imgs if isinstance(i, dict) and i.get("url")
                             and "thumb" not in str(i.get("tags", ""))), None) or next(
                     (i.get("url") for i in imgs if isinstance(i, dict) and i.get("url")), None)
                 self.last_event[did] = {"did": did, "ts": ts, "url": url, "source": "alarm",
                                         "duration": _num(a.get("dur"))}
+
+        if self.nvr:
+            if not self._nvr_seeded:
+                self._nvr_seeded = True
+                await self.hass.async_add_executor_job(
+                    self.nvr.known, {d: c["name"] for d, c in self.cameras.items()})
+            for rec in await self.nvr.process():
+                self.hass.bus.async_fire(f"{DOMAIN}_recording", rec)
 
         # 2) fallback: a new alarm snapshot shows up in the device info
         for did, info in infos.items():
@@ -227,6 +242,8 @@ class WansviewCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 "snapshot_ts": _to_ts(base.get("snapshotTs")),
                 "event": ev,
                 "motion": bool(ev and now - ev["ts"] < self.hold),
+                "recordings_today": self.nvr.today.get(did, 0) if self.nvr else None,
+                "last_video": (self.nvr.last_files.get(did) or {}).get("video") if self.nvr else None,
             }
         return data
 
