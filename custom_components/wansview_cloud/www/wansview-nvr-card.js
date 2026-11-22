@@ -183,7 +183,7 @@ class WansviewNvrCard extends HTMLElement {
             <div class="cgrid ${c.row ? "row" : ""}" style="${c.row ? `grid-template-columns:repeat(${camsCfg.length},1fr)` : ""}">${camTiles}</div>`
           : camsCfg.length ? `<div class="cgrid">${camTiles}</div><div class="head sub"><div>📼 Zadnji snimci</div><div class="count">${this._items.length} snimaka</div></div>`
           : `<div class="head"><div class="title">${this._esc(c.title)}</div><div class="count">${this._items.length} snimaka</div></div>`}
-        ${this._cams.length > 1 ? `<div class="chips">${chips}</div>` : ""}
+        ${c.recent !== false && this._cams.length > 1 ? `<div class="chips">${chips}</div>` : ""}
         ${this._error ? `<div class="empty">Greška: ${this._esc(this._error)}</div>` : ""}
         ${c.recent === false ? "" : !this._error && !this._items.length ? `<div class="empty">Još nema snimaka.</div>` : days}
       </ha-card>`;
