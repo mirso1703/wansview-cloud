@@ -40,9 +40,19 @@ class WansviewNvrCard extends HTMLElement {
     try {
       const msg = { type: "wansview_cloud/recordings", limit: this._config.recent === false ? 1 : this._config.limit };
       if (this._filter) msg.camera = this._filter;
-      const res = await this._hass.callWS(msg);
-      this._items = res.items || [];
-      if (!this._filter) this._cams = res.cameras || [];
+      let wv = { items: [], cameras: [] };
+      if (!this._filter || !(this._reoCams || []).includes(this._filter)) wv = await this._hass.callWS(msg);
+      let items = this._group(wv.items || []);
+      let reoNames = [];
+      if (this._config.reolink && this._config.recent !== false) {
+        const reo = await this._loadReolink().catch(() => []);
+        reoNames = [...new Set(reo.map((r) => r.camera))];
+        this._reoCams = reoNames;
+        items = items.concat(this._filter ? reo.filter((r) => r.camera === this._filter) : reo);
+      }
+      items.sort((a, b) => (b.day + b.time).localeCompare(a.day + a.time));
+      this._items = items.slice(0, this._config.limit);
+      if (!this._filter) this._cams = [...reoNames, ...(wv.cameras || [])];
       if (this._config.cameras) {
         const latest = {};
         await Promise.all(
@@ -58,6 +68,60 @@ class WansviewNvrCard extends HTMLElement {
       this._error = e.message || String(e);
     }
     this._render();
+  }
+
+  // merge back-to-back clips of the same camera (gap <= 2 min) into one event
+  _group(items) {
+    const asc = [...items].sort((a, b) => (a.day + a.time).localeCompare(b.day + b.time));
+    const ts = (it) => new Date(`${it.day}T${it.time}`).getTime();
+    const out = [];
+    for (const it of asc) {
+      const last = out[out.length - 1];
+      if (last && last.camera === it.camera && ts(it) - last._end <= 120000) {
+        if (it.video) last.videos.push(it.video);
+        last._end = ts(it) + 10000;
+        last.count++;
+        continue;
+      }
+      out.push({ ...it, videos: it.video ? [it.video] : [], count: 1, _end: ts(it) + 10000 });
+    }
+    return out;
+  }
+
+  async _loadReolink() {
+    const b = (id) => this._hass.callWS({ type: "media_source/browse_media", media_content_id: id });
+    const root = await b("media-source://reolink");
+    const days = this._config.reolink_days || 2;
+    const out = [];
+    for (const cam of root.children || []) {
+      const ident = cam.media_content_id.split("|").slice(1).join("|");
+      const name = (this._config.reolink_names || {})[cam.title] || cam.title;
+      for (let i = 0; i < days; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const id = `media-source://reolink/DAY|${ident}|${this._config.reolink_stream || "sub"}|${d.getFullYear()}|${d.getMonth() + 1}|${d.getDate()}`;
+        let res;
+        try {
+          res = await b(id);
+        } catch (e) {
+          continue;
+        }
+        const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        for (const f of res.children || []) {
+          const m = f.title.match(/^(\d\d:\d\d:\d\d)\s+(\d+:\d\d:\d\d)\s*(.*)$/);
+          if (!m) continue;
+          const tags = m[3].trim();
+          if (!tags || /^Timer$/i.test(tags)) continue;
+          out.push({ camera: name, day, time: m[1], dur: m[2].replace(/^0:/, ""), tags, reolink: f.media_content_id, count: 1, videos: [] });
+        }
+      }
+    }
+    return out;
+  }
+
+  _tagIcons(tags) {
+    const t = (tags || "").toLowerCase();
+    return [t.includes("person") ? "🧍" : "", t.includes("vehicle") ? "🚗" : "", t.includes("animal") || t.includes("pet") ? "🐾" : "", !/person|vehicle|animal|pet/.test(t) ? "〰️" : ""].join("");
   }
 
   _dayLabel(day) {
@@ -94,11 +158,12 @@ class WansviewNvrCard extends HTMLElement {
             .map(
               (it, i) => `
             <div class="tile" data-day="${day}" data-i="${i}">
-              ${it.image ? `<img loading="lazy" src="${it.image}">` : `<div class="noimg">🎞️</div>`}
+              ${it.image ? `<img loading="lazy" src="${it.image}">` : it.reolink ? `<div class="reo"><div class="ri">${this._tagIcons(it.tags)}</div><div class="rd">${this._esc(it.dur)}</div></div>` : `<div class="noimg">🎞️</div>`}
+              ${it.count > 1 ? `<div class="multi">×${it.count}</div>` : ""}
               <div class="shade"></div>
               <div class="cam">${this._esc(it.camera)}</div>
               <div class="time">${this._esc(it.time.slice(0, 5))}</div>
-              ${it.video ? `<div class="play">▶</div>` : ""}
+              ${it.video || it.reolink ? `<div class="play">▶</div>` : ""}
             </div>`
             )
             .join("")}
@@ -169,6 +234,12 @@ class WansviewNvrCard extends HTMLElement {
         .pill.live { left:8px; top:8px; background:rgba(229,57,53,.92); }
         .ctile .play { bottom:8px; right:8px; }
         .sub { margin:14px 2px 0; font-size:15px; font-weight:700; color:var(--primary-text-color); }
+        .reo { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+               background:radial-gradient(circle at 30% 20%,#2b3a55,#141a26); }
+        .reo .ri { font-size:26px; letter-spacing:2px; }
+        .reo .rd { font-size:12px; font-weight:700; color:#cfe3ff; opacity:.85; }
+        .multi { position:absolute; right:8px; top:6px; background:rgba(0,0,0,.55); color:#fff; font-size:11px; font-weight:700;
+                 padding:2px 7px; border-radius:10px; }
         .empty { padding:24px; text-align:center; color:var(--secondary-text-color); }
         .modal { position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.92); display:flex; flex-direction:column;
                  align-items:center; justify-content:center; padding:16px; }
@@ -212,16 +283,39 @@ class WansviewNvrCard extends HTMLElement {
     );
   }
 
-  _open(it) {
+  async _open(it) {
     const m = document.createElement("div");
     m.className = "modal";
-    const media = it.video
-      ? `<video src="${it.video}" ${it.image ? `poster="${it.image}"` : ""} controls autoplay playsinline></video>`
-      : `<img src="${it.image}">`;
-    m.innerHTML = `<div class="mhead">${this._esc(it.camera)} · ${this._dayLabel(it.day)} ${this._esc(it.time)}</div>${media}
+    let videos = it.videos && it.videos.length ? [...it.videos] : it.video ? [it.video] : [];
+    if (it.reolink) {
+      try {
+        const r = await this._hass.callWS({ type: "media_source/resolve_media", media_content_id: it.reolink, expires: 3600 });
+        videos = [r.url];
+      } catch (e) {
+        videos = [];
+      }
+    }
+    const media = videos.length
+      ? `<video src="${videos[0]}" ${it.image ? `poster="${it.image}"` : ""} controls autoplay playsinline></video>`
+      : it.image ? `<img src="${it.image}">` : `<div class="mhead">Snimak nije dostupan.</div>`;
+    const extra = it.reolink ? ` · ${this._tagIcons(it.tags)} ${this._esc(it.dur)}` : videos.length > 1 ? ` · <span class="pn">1</span>/${videos.length} klipa` : "";
+    m.innerHTML = `<div class="mhead">${this._esc(it.camera)} · ${this._dayLabel(it.day)} ${this._esc(it.time)}${extra}</div>${media}
       <div class="mbar">${it.image ? `<a href="${it.image}" target="_blank">Slika</a>` : ""}${
-        it.video ? `<a href="${it.video}" target="_blank">Preuzmi video</a>` : ""
+        videos.length ? `<a class="dl" href="${videos[0]}" target="_blank">Preuzmi video</a>` : ""
       }<button>Zatvori</button></div>`;
+    const v = m.querySelector("video");
+    if (v && videos.length > 1) {
+      let i = 0;
+      v.addEventListener("ended", () => {
+        if (++i >= videos.length) return;
+        v.src = videos[i];
+        v.play().catch(() => {});
+        const pn = m.querySelector(".pn");
+        if (pn) pn.textContent = i + 1;
+        const dl = m.querySelector(".dl");
+        if (dl) dl.href = videos[i];
+      });
+    }
     m.addEventListener("click", (e) => {
       if (e.target === m || e.target.tagName === "BUTTON") m.remove();
     });
