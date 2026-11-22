@@ -38,7 +38,7 @@ class WansviewNvrCard extends HTMLElement {
   async _load() {
     if (!this._hass) return;
     try {
-      const msg = { type: "wansview_cloud/recordings", limit: this._config.limit };
+      const msg = { type: "wansview_cloud/recordings", limit: this._config.recent === false ? 1 : this._config.limit };
       if (this._filter) msg.camera = this._filter;
       const res = await this._hass.callWS(msg);
       this._items = res.items || [];
@@ -114,13 +114,13 @@ class WansviewNvrCard extends HTMLElement {
         const bat = st(cam.battery);
         const moving = st(cam.motion) === "on";
         const ago = st(cam.ago);
-        const wide = camsCfg.length % 2 === 1 && idx === camsCfg.length - 1;
+        const wide = !c.row && camsCfg.length % 2 === 1 && idx === camsCfg.length - 1;
         return `<div class="ctile ${wide ? "wide" : ""} ${moving ? "moving" : ""}" data-cam="${idx}">
             ${img ? `<img src="${img}">` : `<div class="noimg">📷</div>`}
             <div class="shade"></div>
             ${bat !== null && bat !== "unavailable" ? `<div class="pill bat ${+bat < 20 ? "low" : ""}">🔋 ${Math.round(+bat)}%</div>` : ""}
             ${moving ? `<div class="pill live">● Pokret</div>` : ""}
-            <div class="pill name">${this._esc(cam.name)}${ago ? ` · ${this._esc(ago)}` : ""}</div>
+            <div class="pill name">${c.row ? `${this._esc(cam.name)}${ago ? `<br><span style="font-weight:500;opacity:.85">${this._esc(ago)}</span>` : ""}` : `${this._esc(cam.name)}${ago ? ` · ${this._esc(ago)}` : ""}`}</div>
             ${it && it.video ? `<div class="play">▶</div>` : ""}
           </div>`;
       })
@@ -147,6 +147,14 @@ class WansviewNvrCard extends HTMLElement {
         .time { position:absolute; left:8px; bottom:6px; color:#fff; font-size:14px; font-weight:700; text-shadow:0 1px 2px #000; }
         .play { position:absolute; right:8px; bottom:6px; width:24px; height:24px; border-radius:50%; background:rgba(0,0,0,.55);
                 color:#fff; font-size:11px; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px); }
+        .more { font-size:13px; font-weight:600; color:var(--primary-color); text-decoration:none; }
+        .cgrid.row { margin-bottom:0; }
+        .cgrid.row .ctile { aspect-ratio:3/4; }
+        .cgrid.row .pill { font-size:11px; padding:3px 7px; }
+        .cgrid.row .pill.name { left:6px; right:6px; bottom:6px; text-align:center; white-space:normal; line-height:1.25; }
+        .cgrid.row .pill.bat { right:6px; top:6px; font-size:10px; }
+        .cgrid.row .pill.live { left:6px; top:6px; font-size:10px; }
+        .cgrid.row .play { display:none; }
         .cgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:6px; }
         .ctile { position:relative; aspect-ratio:4/3; border-radius:12px; overflow:hidden; background:#111; cursor:pointer;
                  outline:2px solid transparent; transition:outline-color .3s; }
@@ -171,11 +179,13 @@ class WansviewNvrCard extends HTMLElement {
                  font-size:14px; text-decoration:none; cursor:pointer; }
       </style>
       <ha-card>
-        ${camsCfg.length ? `<div class="cgrid">${camTiles}</div><div class="head sub"><div>📼 Zadnji snimci</div><div class="count">${this._items.length} snimaka</div></div>`
+        ${camsCfg.length && c.recent === false ? `<div class="head"><div class="title">${this._esc(c.title)}</div>${c.link ? `<a class="more" href="${c.link}">Svi snimci ›</a>` : ""}</div>
+            <div class="cgrid ${c.row ? "row" : ""}" style="${c.row ? `grid-template-columns:repeat(${camsCfg.length},1fr)` : ""}">${camTiles}</div>`
+          : camsCfg.length ? `<div class="cgrid">${camTiles}</div><div class="head sub"><div>📼 Zadnji snimci</div><div class="count">${this._items.length} snimaka</div></div>`
           : `<div class="head"><div class="title">${this._esc(c.title)}</div><div class="count">${this._items.length} snimaka</div></div>`}
         ${this._cams.length > 1 ? `<div class="chips">${chips}</div>` : ""}
         ${this._error ? `<div class="empty">Greška: ${this._esc(this._error)}</div>` : ""}
-        ${!this._error && !this._items.length ? `<div class="empty">Još nema snimaka.</div>` : days}
+        ${c.recent === false ? "" : !this._error && !this._items.length ? `<div class="empty">Još nema snimaka.</div>` : days}
       </ha-card>`;
     this.shadowRoot.querySelectorAll(".chip").forEach((b) =>
       b.addEventListener("click", () => {
@@ -183,6 +193,13 @@ class WansviewNvrCard extends HTMLElement {
         this._load();
       })
     );
+    const more = this.shadowRoot.querySelector(".more");
+    if (more)
+      more.addEventListener("click", (e) => {
+        e.preventDefault();
+        history.pushState(null, "", c.link);
+        window.dispatchEvent(new CustomEvent("location-changed"));
+      });
     this.shadowRoot.querySelectorAll(".ctile").forEach((t) =>
       t.addEventListener("click", () => {
         const cam = camsCfg[+t.dataset.cam];
