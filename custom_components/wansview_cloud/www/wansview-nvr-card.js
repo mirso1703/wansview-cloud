@@ -64,7 +64,9 @@ class WansviewNvrCard extends HTMLElement {
         this._latest = latest;
       }
       this._error = null;
+      this._loaded = true;
     } catch (e) {
+      this._loaded = true;
       this._error = e.message || String(e);
     }
     this._render();
@@ -256,7 +258,7 @@ class WansviewNvrCard extends HTMLElement {
           : `<div class="head"><div class="title">${this._esc(c.title)}</div><div class="count">${this._items.length} snimaka</div></div>`}
         ${c.recent !== false && this._cams.length > 1 ? `<div class="chips">${chips}</div>` : ""}
         ${this._error ? `<div class="empty">Greška: ${this._esc(this._error)}</div>` : ""}
-        ${c.recent === false ? "" : !this._error && !this._items.length ? `<div class="empty">Još nema snimaka.</div>` : days}
+        ${c.recent === false ? "" : !this._error && !this._items.length ? `<div class="empty">${this._loaded ? "Još nema snimaka." : "Učitavam snimke…"}</div>` : days}
       </ha-card>`;
     this.shadowRoot.querySelectorAll(".chip").forEach((b) =>
       b.addEventListener("click", () => {
