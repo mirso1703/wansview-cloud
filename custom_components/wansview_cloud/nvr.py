@@ -18,15 +18,47 @@ EXT = {"image/jpeg": "jpg", "image/png": "png", "video/mp4": "mp4", "video/quick
        "video/x-flv": "flv", "application/octet-stream": "mp4"}
 
 
+def default_root(hass: HomeAssistant) -> str:
+    media = (getattr(hass.config, "media_dirs", None) or {}).get("local") or "/media"
+    return os.path.join(media, "wansview")
+
+
+def storage_choices(hass: HomeAssistant) -> list[str]:
+    """Default folder + one 'wansview' folder per drive/folder mounted under /media and /share."""
+    out = [default_root(hass)]
+    for base in ("/media", "/share"):
+        if not os.path.isdir(base):
+            continue
+        for d in sorted(os.listdir(base)):
+            p = os.path.join(base, d)
+            if os.path.isdir(p) and d != "wansview" and not d.startswith("."):
+                out.append(os.path.join(p, "wansview"))
+    return out
+
+
+def check_writable(path: str) -> bool:
+    real = os.path.realpath(path)
+    if not (real.startswith("/media/") or real.startswith("/share/") or real.startswith("/config/")):
+        return False
+    try:
+        os.makedirs(real, exist_ok=True)
+        test = os.path.join(real, ".write_test")
+        with open(test, "w") as f:
+            f.write("ok")
+        os.remove(test)
+        return True
+    except OSError:
+        return False
+
+
 def _safe(name: str) -> str:
     return re.sub(r"[^\w\-. ]", "_", name, flags=re.UNICODE).strip() or "kamera"
 
 
 class Nvr:
-    def __init__(self, hass: HomeAssistant, retention_days: int) -> None:
+    def __init__(self, hass: HomeAssistant, retention_days: int, storage_dir: str | None = None) -> None:
         self.hass = hass
-        media = (getattr(hass.config, "media_dirs", None) or {}).get("local") or "/media"
-        self.root = os.path.join(media, "wansview")
+        self.root = storage_dir or default_root(hass)
         self._legacy = hass.config.path("media", "wansview")
         self.retention = retention_days
         self.saved: set[str] = set()

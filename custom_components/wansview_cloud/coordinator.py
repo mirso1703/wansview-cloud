@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import WansviewApi, WansviewAuthError, WansviewError
-from .const import (CONF_MOTION_HOLD, CONF_NVR, CONF_RETENTION, DEFAULT_MOTION_HOLD, DEFAULT_RETENTION,
+from .const import (CONF_MOTION_HOLD, CONF_NVR, CONF_RETENTION, CONF_STORAGE, DEFAULT_MOTION_HOLD, DEFAULT_RETENTION,
                     DEFAULT_SCAN, DOMAIN)
 from .nvr import Nvr
 
@@ -97,7 +97,8 @@ class WansviewCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self._fallback: dict[str, str] = {}
         self.last_event: dict[str, dict[str, Any]] = {}
         self.last_raw: dict[str, Any] = {}
-        self.nvr = Nvr(hass, int(entry.options.get(CONF_RETENTION, DEFAULT_RETENTION))) \
+        self.nvr = Nvr(hass, int(entry.options.get(CONF_RETENTION, DEFAULT_RETENTION)),
+                       entry.options.get(CONF_STORAGE) or None) \
             if entry.options.get(CONF_NVR, True) else None
         self._nvr_seeded = False
 

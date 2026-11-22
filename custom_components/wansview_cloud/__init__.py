@@ -13,6 +13,7 @@ import homeassistant.helpers.config_validation as cv
 from .api import WansviewApi, WansviewError
 from .const import CONF_AGENT_TOKEN, DOMAIN, PLATFORMS
 from .coordinator import WansviewCoordinator
+from .recordings import CARD_URL, async_setup_recordings
 
 RAW_SCHEMA = vol.Schema({
     vol.Required("url"): cv.string,
@@ -37,6 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id, None)
         raise
     hass.data.get(f"{DOMAIN}_pending", {}).pop(entry.entry_id, None)
+    await async_setup_recordings(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_reload))
     return True

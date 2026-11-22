@@ -24,9 +24,13 @@
         "data": {
           "motion_hold": "Koliko sekundi senzor ostaje 'pokret' nakon alarma",
           "nvr": "Snimaj sve alarme lokalno (slika + video u /media/wansview)",
-          "retention_days": "Koliko dana čuvati snimke"
+          "retention_days": "Koliko dana čuvati snimke",
+          "storage_dir": "Gdje spremati snimke (npr. USB disk pod /media)"
         }
       }
+    },
+    "error": {
+      "bad_path": "U taj folder se ne može pisati. Izaberi folder pod /media ili /share (USB disk se pojavi pod /media)."
     }
   },
   "entity": {

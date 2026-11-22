@@ -11,3 +11,4 @@ PORTAL_UAC = "https://uac-portal.ajcloud.net/api"
 CONF_NVR = "nvr"
 CONF_RETENTION = "retention_days"
 DEFAULT_RETENTION = 14
+CONF_STORAGE = "storage_dir"
