@@ -25,7 +25,9 @@ def _safe(name: str) -> str:
 class Nvr:
     def __init__(self, hass: HomeAssistant, retention_days: int) -> None:
         self.hass = hass
-        self.root = hass.config.path("media", "wansview")
+        media = (getattr(hass.config, "media_dirs", None) or {}).get("local") or "/media"
+        self.root = os.path.join(media, "wansview")
+        self._legacy = hass.config.path("media", "wansview")
         self.retention = retention_days
         self.saved: set[str] = set()
         self.pending: dict[str, dict[str, Any]] = {}
@@ -105,6 +107,15 @@ class Nvr:
 
     def known(self, files_by_did: dict[str, str]) -> None:
         """Count today's recordings already on disk (after a restart)."""
+        if self._legacy != self.root and os.path.isdir(self._legacy):
+            for cam in os.listdir(self._legacy):
+                for day in os.listdir(os.path.join(self._legacy, cam)):
+                    src = os.path.join(self._legacy, cam, day)
+                    dst = os.path.join(self.root, cam, day)
+                    os.makedirs(dst, exist_ok=True)
+                    for f in os.listdir(src):
+                        shutil.move(os.path.join(src, f), os.path.join(dst, f))
+            shutil.rmtree(self._legacy, ignore_errors=True)
         day = datetime.now().strftime("%Y-%m-%d")
         for did, name in files_by_did.items():
             d = os.path.join(self.root, _safe(name), day)
