@@ -210,6 +210,7 @@ class WansviewCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 self._nvr_seeded = True
                 await self.hass.async_add_executor_job(
                     self.nvr.known, {d: c["name"] for d, c in self.cameras.items()})
+                self.hass.async_create_background_task(self.nvr.remux_existing(), f"{DOMAIN}_remux")
             for rec in await self.nvr.process():
                 self.hass.bus.async_fire(f"{DOMAIN}_recording", rec)
 

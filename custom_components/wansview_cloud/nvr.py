@@ -1,6 +1,7 @@
 """Local 'NVR': save every motion alarm (picture + clip) under /media/wansview."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -110,6 +111,8 @@ class Nvr:
                 ext = EXT.get(ctype) or ("jpg" if kind == "image" else "mp4")
                 path = os.path.join(folder, f"{base}.{ext}")
                 await self.hass.async_add_executor_job(_write, path, data)
+                if kind == "video" and data[:1] == b"\x47":
+                    await self.remux(path)
                 p["done"].add(kind)
                 self.last_files.setdefault(p["did"], {})[kind] = path
             all_done = p["done"] >= set(p["urls"])
@@ -124,6 +127,51 @@ class Nvr:
             self._last_cleanup = time.time()
             await self.hass.async_add_executor_job(self._cleanup_and_count)
         return finished
+
+    async def remux(self, path: str) -> bool:
+        """Cloud clips are MPEG-TS; browsers/iOS need MP4. Remux in place with ffmpeg."""
+        try:
+            from homeassistant.components.ffmpeg import get_ffmpeg_manager
+            binary = get_ffmpeg_manager(self.hass).binary
+        except Exception:  # noqa: BLE001
+            binary = "ffmpeg"
+        tmp = path + ".remux.mp4"
+        for audio in (["-c:a", "aac", "-b:a", "64k"], ["-an"]):
+            proc = await asyncio.create_subprocess_exec(
+                binary, "-y", "-loglevel", "error", "-f", "mpegts", "-i", path, "-map", "0:v:0", "-map", "0:a:0?",
+                "-c:v", "copy", *audio, "-movflags", "+faststart", "-tag:v", "hvc1" if await self._is_hevc(binary, path) else "avc1",
+                tmp, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+            _, err = await proc.communicate()
+            if proc.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 1000:
+                await self.hass.async_add_executor_job(os.replace, tmp, path)
+                return True
+            _LOGGER.debug("remux failed (%s): %s", audio, err[-300:] if err else "")
+        if os.path.exists(tmp):
+            await self.hass.async_add_executor_job(os.remove, tmp)
+        return False
+
+    async def _is_hevc(self, binary: str, path: str) -> bool:
+        proc = await asyncio.create_subprocess_exec(binary, "-hide_banner", "-i", path,
+                                                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+        _, err = await proc.communicate()
+        return b"hevc" in (err or b"").lower() or b"h265" in (err or b"").lower()
+
+    async def remux_existing(self) -> int:
+        """Fix clips saved before remuxing existed."""
+        def find() -> list[str]:
+            out = []
+            for dirpath, _d, files in os.walk(self.root):
+                for f in files:
+                    if f.endswith(".mp4"):
+                        p = os.path.join(dirpath, f)
+                        with open(p, "rb") as fh:
+                            if fh.read(1) == b"\x47":
+                                out.append(p)
+            return out
+        n = 0
+        for p in await self.hass.async_add_executor_job(find):
+            n += bool(await self.remux(p))
+        return n
 
     def _cleanup_and_count(self) -> None:
         if not os.path.isdir(self.root):
