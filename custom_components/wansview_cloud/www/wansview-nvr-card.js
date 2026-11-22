@@ -42,16 +42,28 @@ class WansviewNvrCard extends HTMLElement {
       if (this._filter) msg.camera = this._filter;
       let wv = { items: [], cameras: [] };
       if (!this._filter || !(this._reoCams || []).includes(this._filter)) wv = await this._hass.callWS(msg);
-      let items = this._group(wv.items || []);
-      let reoNames = [];
+      const wvItems = this._group(wv.items || []);
+      const merge = (reo) => {
+        let items = wvItems.concat(this._filter ? reo.filter((r) => r.camera === this._filter) : reo);
+        items.sort((a, b) => (b.day + b.time).localeCompare(a.day + a.time));
+        this._items = items.slice(0, this._config.limit);
+      };
+      // show Wansview clips right away, Reolink SD list (slow, asks the camera) is added when it arrives
+      merge(this._reoCache || []);
+      if (!this._filter) this._cams = [...(this._reoCams || []), ...(wv.cameras || [])];
+      this._loaded = true;
+      this._render();
+      let reoNames = this._reoCams || [];
       if (this._config.reolink && this._config.recent !== false) {
-        const reo = await this._loadReolink().catch(() => []);
-        reoNames = [...new Set(reo.map((r) => r.camera))];
-        this._reoCams = reoNames;
-        items = items.concat(this._filter ? reo.filter((r) => r.camera === this._filter) : reo);
+        const timeout = new Promise((res) => setTimeout(() => res(null), 25000));
+        const reo = await Promise.race([this._loadReolink().catch(() => null), timeout]);
+        if (reo) {
+          this._reoCache = reo;
+          reoNames = [...new Set(reo.map((r) => r.camera))];
+          this._reoCams = reoNames;
+          merge(reo);
+        }
       }
-      items.sort((a, b) => (b.day + b.time).localeCompare(a.day + a.time));
-      this._items = items.slice(0, this._config.limit);
       if (!this._filter) this._cams = [...reoNames, ...(wv.cameras || [])];
       if (this._config.cameras) {
         const latest = {};
