@@ -8,3 +8,16 @@ raw_request:
     data:
       selector:
         object:
+
+save_image:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: [camera, image]
+    filename:
+      required: true
+      example: "/media/vozila/A12K345.jpg"
+      selector:
+        text:

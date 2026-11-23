@@ -63,6 +63,39 @@ def _register_services(hass: HomeAssistant) -> None:
         hass.services.async_register(DOMAIN, "raw_request", raw_request, schema=RAW_SCHEMA,
                                      supports_response=SupportsResponse.ONLY)
 
+    if not hass.services.has_service(DOMAIN, "save_image"):
+        async def save_image(call: ServiceCall):
+            """Save the current picture of a camera or image entity to a file under /media."""
+            import os
+            ent, path = call.data["entity_id"], os.path.realpath(call.data["filename"])
+            if not (path.startswith("/media/") or path.startswith("/share/")):
+                raise HomeAssistantError("filename must be under /media or /share")
+            if ent.startswith("camera."):
+                from homeassistant.components.camera import async_get_image
+                data = (await async_get_image(hass, ent)).content
+            elif ent.startswith("image."):
+                comp = hass.data.get("image")
+                try:
+                    from homeassistant.components.image.const import DATA_COMPONENT
+                    comp = hass.data.get(DATA_COMPONENT) or comp
+                except ImportError:
+                    pass
+                img = comp.get_entity(ent) if comp else None
+                if img is None:
+                    raise HomeAssistantError(f"{ent} not found")
+                data = await img.async_image()
+            else:
+                raise HomeAssistantError("entity must be camera.* or image.*")
+            if not data:
+                raise HomeAssistantError("no image")
+            from .nvr import _write
+            await hass.async_add_executor_job(_write, path, data)
+            return {"filename": path, "bytes": len(data)}
+
+        hass.services.async_register(DOMAIN, "save_image", save_image, schema=vol.Schema({
+            vol.Required("entity_id"): cv.entity_id, vol.Required("filename"): cv.string}),
+            supports_response=SupportsResponse.OPTIONAL)
+
 
 async def _reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
