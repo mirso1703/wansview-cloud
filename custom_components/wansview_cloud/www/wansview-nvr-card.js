@@ -3,6 +3,13 @@ class WansviewNvrCard extends HTMLElement {
   setConfig(config) {
     this._config = { limit: 60, columns: 2, title: "Snimci", ...config };
     this._filter = config.camera || "";
+    try {
+      this._view = localStorage.getItem("wvnvr-view") || config.view || "grid";
+      this._zoom = +localStorage.getItem("wvnvr-zoom") || 1;
+    } catch (e) {
+      this._view = config.view || "grid";
+      this._zoom = 1;
+    }
     this._items = [];
     this._cams = [];
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
@@ -138,6 +145,92 @@ class WansviewNvrCard extends HTMLElement {
     return [t.includes("person") ? "🧍" : "", t.includes("vehicle") ? "🚗" : "", t.includes("animal") || t.includes("pet") ? "🐾" : "", !/person|vehicle|animal|pet/.test(t) ? "〰️" : ""].join("");
   }
 
+  _kind(it) {
+    const t = (it.tags || it.label || "").toLowerCase();
+    if (/person|osoba/.test(t)) return "person";
+    if (/vehicle|car|auto/.test(t)) return "vehicle";
+    if (/animal|pet|dog|cat|bird/.test(t)) return "animal";
+    return "motion";
+  }
+
+  _secs(time) {
+    const [h, m, s] = String(time).split(":").map((x) => +x || 0);
+    return h * 3600 + m * 60 + s;
+  }
+
+  _durSecs(it) {
+    if (it.dur) {
+      const p = String(it.dur).split(":").map((x) => +x || 0);
+      return p.reduce((a, b) => a * 60 + b, 0);
+    }
+    if (it._end) return Math.max(10, (it._end - new Date(`${it.day}T${it.time}`).getTime()) / 1000);
+    return 10;
+  }
+
+  _timeline(byDay) {
+    const daysAvail = Object.keys(byDay).sort().reverse();
+    if (!daysAvail.length) return "";
+    if (!this._tlDay || !byDay[this._tlDay]) this._tlDay = daysAvail[0];
+    const day = this._tlDay;
+    const items = byDay[day];
+    const cams = [...new Set(items.map((it) => it.camera))].sort();
+    const z = this._zoom;
+    const pct = (sec) => (sec / 86400) * 100;
+    const ticks = [];
+    const step = z >= 4 ? 1 : z >= 2 ? 2 : 3;
+    for (let h = 0; h <= 24; h++)
+      ticks.push(`<div class="tick ${h % step ? "minor" : ""}" style="left:${pct(h * 3600)}%">${h % step || h === 24 ? "" : `<span>${String(h).padStart(2, "0")}</span>`}</div>`);
+    const now = new Date();
+    const isToday = now.toDateString() === new Date(day + "T12:00:00").toDateString();
+    const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const lanes = cams
+      .map((cam) => {
+        const evs = items
+          .map((it, i) => ({ it, i }))
+          .filter(({ it }) => it.camera === cam)
+          .map(({ it, i }) => {
+            const s = this._secs(it.time);
+            const w = pct(this._durSecs(it));
+            return `<div class="ev ${this._kind(it)}" data-i="${i}" style="left:${pct(s)}%;width:${w}%" title="${this._esc(it.time)} ${this._esc(it.tags || "")}"></div>`;
+          })
+          .join("");
+        return `<div class="lane">${evs}</div>`;
+      })
+      .join("");
+    const counts = { person: 0, vehicle: 0, animal: 0, motion: 0 };
+    items.forEach((it) => counts[this._kind(it)]++);
+    const dayChips = daysAvail
+      .map((d) => `<button class="dchip ${d === day ? "on" : ""}" data-day="${d}">${this._dayLabel(d)}</button>`)
+      .join("");
+    const list = items
+      .map(
+        (it, i) => `<div class="row" data-i="${i}">
+          <span class="dot ${this._kind(it)}"></span><b>${this._esc(it.time.slice(0, 5))}</b>
+          <span class="rc">${this._esc(it.camera)}</span>
+          <span class="rt">${it.reolink ? this._tagIcons(it.tags) : it.count > 1 ? `×${it.count}` : ""}</span>
+          ${it.image ? `<img loading="lazy" src="${it.image}">` : ""}</div>`
+      )
+      .join("");
+    return `
+      <div class="dchips">${dayChips}</div>
+      <div class="tlbar">
+        <div class="legend">
+          <span><i class="dot person"></i>Osoba ${counts.person}</span><span><i class="dot vehicle"></i>Vozilo ${counts.vehicle}</span>
+          <span><i class="dot animal"></i>Životinja ${counts.animal}</span><span><i class="dot motion"></i>Pokret ${counts.motion}</span>
+        </div>
+        <div class="zoom">${[1, 2, 4, 8].map((n) => `<button data-z="${n}" class="${n === z ? "on" : ""}">${n}×</button>`).join("")}</div>
+      </div>
+      <div class="tl">
+        <div class="tlnames"><div class="sp"></div>${cams.map((c) => `<div>${this._esc(c)}</div>`).join("")}</div>
+        <div class="tlscroll"><div class="tlinner" style="width:${z * 100}%">
+          <div class="axis">${ticks.join("")}</div>
+          ${lanes}
+          ${isToday ? `<div class="now" style="left:${pct(nowSec)}%"></div>` : ""}
+        </div></div>
+      </div>
+      <div class="tlist">${list}</div>`;
+  }
+
   _dayLabel(day) {
     const d = new Date(day + "T12:00:00");
     const today = new Date();
@@ -155,6 +248,9 @@ class WansviewNvrCard extends HTMLElement {
 
   _render() {
     if (!this.shadowRoot) return;
+    const prevSc = this.shadowRoot.querySelector(".tlscroll");
+    const prevLeft = prevSc ? prevSc.scrollLeft : null;
+    const prevList = this.shadowRoot.querySelector(".tlist")?.scrollTop;
     const c = this._config || {};
     const byDay = {};
     for (const it of this._items) (byDay[it.day] = byDay[it.day] || []).push(it);
@@ -262,6 +358,41 @@ class WansviewNvrCard extends HTMLElement {
         .mbar { display:flex; gap:10px; margin-top:12px; }
         .mbar button, .mbar a { background:rgba(255,255,255,.12); color:#fff; border:0; border-radius:18px; padding:8px 16px;
                  font-size:14px; text-decoration:none; cursor:pointer; }
+        .seg { display:flex; background:rgba(127,127,127,.15); border-radius:10px; padding:3px; margin:4px 0 8px; }
+        .seg button { flex:1; border:0; background:transparent; color:var(--primary-text-color); padding:6px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; }
+        .seg button.on { background:var(--card-background-color,#222); box-shadow:0 1px 3px rgba(0,0,0,.3); }
+        .dchips { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; margin-bottom:8px; }
+        .dchip { flex:none; border:1px solid var(--divider-color); background:transparent; color:var(--primary-text-color); border-radius:14px; padding:4px 10px; font-size:12px; text-transform:capitalize; cursor:pointer; }
+        .dchip.on { background:var(--primary-color); border-color:var(--primary-color); color:#fff; }
+        .tlbar { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap; }
+        .legend { display:flex; gap:10px; font-size:11px; color:var(--secondary-text-color); flex-wrap:wrap; }
+        .legend span { display:flex; align-items:center; gap:4px; }
+        .zoom { display:flex; gap:2px; }
+        .zoom button { border:1px solid var(--divider-color); background:transparent; color:var(--primary-text-color); border-radius:8px; padding:3px 8px; font-size:12px; cursor:pointer; }
+        .zoom button.on { background:var(--primary-color); color:#fff; border-color:var(--primary-color); }
+        .tl { display:flex; border:1px solid var(--divider-color); border-radius:10px; overflow:hidden; }
+        .tlnames { flex:none; width:78px; border-right:1px solid var(--divider-color); font-size:11px; font-weight:700; color:var(--primary-text-color); }
+        .tlnames .sp { height:20px; }
+        .tlnames div:not(.sp) { height:34px; display:flex; align-items:center; padding:0 6px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border-top:1px solid rgba(127,127,127,.15); }
+        .tlscroll { flex:1; overflow-x:auto; }
+        .tlinner { position:relative; min-width:100%; }
+        .axis { position:relative; height:20px; }
+        .tick { position:absolute; top:0; bottom:-2000px; border-left:1px solid rgba(127,127,127,.22); pointer-events:none; }
+        .tick.minor { border-left-style:dashed; border-left-color:rgba(127,127,127,.1); }
+        .tick span { position:absolute; top:3px; left:3px; font-size:10px; color:var(--secondary-text-color); }
+        .tl { position:relative; }
+        .tlinner { overflow:hidden; }
+        .lane { position:relative; height:34px; border-top:1px solid rgba(127,127,127,.15); }
+        .ev { position:absolute; top:7px; height:20px; min-width:5px; border-radius:4px; cursor:pointer; opacity:.9; }
+        .ev:hover { opacity:1; outline:2px solid #fff; }
+        .person { background:#e53935; } .vehicle { background:#fb8c00; } .animal { background:#43a047; } .motion { background:#1e88e5; }
+        .dot { display:inline-block; width:9px; height:9px; border-radius:50%; flex:none; }
+        .now { position:absolute; top:0; bottom:0; width:2px; background:#ffeb3b; box-shadow:0 0 6px #ffeb3b; pointer-events:none; }
+        .tlist { margin-top:10px; display:flex; flex-direction:column; gap:2px; max-height:50vh; overflow-y:auto; }
+        .row { display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:8px; cursor:pointer; font-size:13px; color:var(--primary-text-color); }
+        .row:hover { background:rgba(127,127,127,.12); }
+        .row .rc { color:var(--secondary-text-color); flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+        .row img { width:56px; height:32px; object-fit:cover; border-radius:5px; }
       </style>
       <ha-card>
         ${camsCfg.length && c.recent === false ? `<div class="head"><div class="title">${this._esc(c.title)}</div>${c.link ? `<a class="more" href="${c.link}">Svi snimci ›</a>` : ""}</div>
@@ -270,7 +401,8 @@ class WansviewNvrCard extends HTMLElement {
           : `<div class="head"><div class="title">${this._esc(c.title)}</div><div class="count">${this._items.length} snimaka</div></div>`}
         ${c.recent !== false && this._cams.length > 1 ? `<div class="chips">${chips}</div>` : ""}
         ${this._error ? `<div class="empty">Greška: ${this._esc(this._error)}</div>` : ""}
-        ${c.recent === false ? "" : !this._error && !this._items.length ? `<div class="empty">${this._loaded ? "Još nema snimaka." : "Učitavam snimke…"}</div>` : days}
+        ${c.recent !== false ? `<div class="seg"><button data-v="grid" class="${this._view !== "timeline" ? "on" : ""}">▦ Mreža</button><button data-v="timeline" class="${this._view === "timeline" ? "on" : ""}">▬ Timeline</button></div>` : ""}
+        ${c.recent === false ? "" : !this._error && !this._items.length ? `<div class="empty">${this._loaded ? "Još nema snimaka." : "Učitavam snimke…"}</div>` : this._view === "timeline" ? this._timeline(byDay) : days}
       </ha-card>`;
     this.shadowRoot.querySelectorAll(".chip").forEach((b) =>
       b.addEventListener("click", () => {
@@ -292,9 +424,50 @@ class WansviewNvrCard extends HTMLElement {
         if (it) this._open(it);
       })
     );
+    this.shadowRoot.querySelectorAll(".seg button").forEach((b) =>
+      b.addEventListener("click", () => {
+        this._view = b.dataset.v;
+        try { localStorage.setItem("wvnvr-view", this._view); } catch (e) {}
+        this._render();
+      })
+    );
+    this.shadowRoot.querySelectorAll(".dchip").forEach((b) =>
+      b.addEventListener("click", () => {
+        this._tlDay = b.dataset.day;
+        this._render();
+      })
+    );
+    this.shadowRoot.querySelectorAll(".zoom button").forEach((b) =>
+      b.addEventListener("click", () => {
+        this._zoom = +b.dataset.z;
+        try { localStorage.setItem("wvnvr-zoom", this._zoom); } catch (e) {}
+        this._render();
+        this._scrollToLatest();
+      })
+    );
+    this.shadowRoot.querySelectorAll(".ev, .row").forEach((t) =>
+      t.addEventListener("click", () => this._open(byDay[this._tlDay][+t.dataset.i]))
+    );
+    if (prevLeft !== null) {
+      const sc = this.shadowRoot.querySelector(".tlscroll");
+      if (sc) sc.scrollLeft = prevLeft;
+      const tl = this.shadowRoot.querySelector(".tlist");
+      if (tl && prevList) tl.scrollTop = prevList;
+    } else if (this._view === "timeline" && !this._tlScrolled) {
+      this._tlScrolled = true;
+      this._scrollToLatest();
+    }
     this.shadowRoot.querySelectorAll(".tile").forEach((t) =>
       t.addEventListener("click", () => this._open(byDay[t.dataset.day][+t.dataset.i]))
     );
+  }
+
+  _scrollToLatest() {
+    requestAnimationFrame(() => {
+      const sc = this.shadowRoot.querySelector(".tlscroll");
+      const first = this.shadowRoot.querySelector(".ev");
+      if (sc && first) sc.scrollLeft = Math.max(0, first.offsetLeft - sc.clientWidth * 0.7);
+    });
   }
 
   async _open(it) {
