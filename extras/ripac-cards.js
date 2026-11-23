@@ -661,7 +661,6 @@ class RipacSolarCard extends RipacBase {
       ha-card.sol { background:radial-gradient(110% 80% at 50% 35%,#24304a,#121826 70%); color:#fff; }
       .sol .ttl { color:#fff; } .sol .sub { color:#a9b6cf; }
       .top { display:flex; align-items:center; gap:8px; }
-      .ph { display:block; width:calc(100% + 24px); margin:-10px -12px 10px; aspect-ratio:16/9; object-fit:cover; border-radius:14px 14px 0 0; cursor:zoom-in; }
       .pill { font-size:11.5px; font-weight:700; padding:5px 10px; border-radius:10px; background:rgba(255,255,255,.08); color:#e8eefc; cursor:pointer; white-space:nowrap; }
       .pill.ai { display:flex; align-items:center; gap:4px; } .pill.ai.on { background:rgba(105,240,174,.18); color:#69f0ae; }
       .pill ha-icon { --mdc-icon-size:15px; }
@@ -955,6 +954,7 @@ class RipacVozilaCard extends HTMLElement {
       .v { overflow:hidden; border-radius:14px; padding:10px 12px; margin-bottom:8px; background:rgba(127,127,127,.08); border:1px solid rgba(127,127,127,.14); }
       .v.un { background:color-mix(in srgb,#ff9800 10%,transparent); border-color:color-mix(in srgb,#ff9800 35%,transparent); }
       .top { display:flex; align-items:center; gap:8px; }
+      .ph { display:block; width:calc(100% + 24px); margin:-10px -12px 10px; aspect-ratio:4/3; object-fit:cover; border-radius:14px 14px 0 0; cursor:zoom-in; }
       .plate { font:700 15px/1 ui-monospace,Menlo,monospace; letter-spacing:1px; background:#fff; color:#111; border:2px solid #1e3a8a; border-left:10px solid #1e3a8a;
         border-radius:6px; padding:5px 8px; width:120px; min-width:0; flex:0 1 120px; text-transform:uppercase; }
       .tag { font-size:11px; font-weight:700; padding:3px 8px; border-radius:10px; background:rgba(76,175,80,.18); color:#66bb6a; }
