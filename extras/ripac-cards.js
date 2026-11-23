@@ -777,7 +777,7 @@ class RipacAcChip extends HTMLElement {
     const step = a.target_temp_step || 1;
     R.querySelector(".dn")?.addEventListener("click", () => this._svc("set_temperature", { temperature: Math.max(a.min_temp || 16, (t || 21) - step) }));
     R.querySelector(".up")?.addEventListener("click", () => this._svc("set_temperature", { temperature: Math.min(a.max_temp || 32, (t || 21) + step) }));
-    R.querySelector(".p").onclick = () => on ? this._svc("turn_off", {}) : this._svc("set_hvac_mode", { hvac_mode: "heat" });
+    R.querySelector(".p").onclick = () => on ? this._svc("turn_off", {}) : this._svc("set_temperature", { hvac_mode: "heat", temperature: t && t <= 24 ? t : 21 });
   }
 }
 
