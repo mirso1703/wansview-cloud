@@ -434,11 +434,11 @@ class RipacUnaCard extends RipacBase {
       .wdw ha-icon { --mdc-icon-size:12px; color:#000; }
       .hd1 { display:flex; align-items:center; gap:10px; }
       .shield.sm { width:38px; height:38px; border-radius:12px; } .shield.sm ha-icon { --mdc-icon-size:22px; }
-      .hd1 .ttl { font-size:15px; white-space:nowrap; }
+      .hd1 .ttl { font-size:15px; white-space:nowrap; } .tt2 { min-width:0; } .tt2 .sub { margin-top:0; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .hd1 .big { display:flex; align-items:baseline; gap:3px; margin-left:4px; cursor:pointer; } .hd1 .lvl { font-size:24px; }
       .tr { display:flex; align-items:center; gap:1px; color:var(--tc); } .tr ha-icon { --mdc-icon-size:22px; } .tr small { font-size:11px; font-weight:700; }
       .hd1 .badge { margin-left:auto; }
-      @media (max-width:380px) { .hd1 .ttl { display:none; } }
+      @media (max-width:380px) { .hd1 .tt2 .ttl { font-size:13px; } }
       .legend2 { display:flex; gap:12px; flex-wrap:wrap; font-size:10.5px; color:var(--secondary-text-color); margin-top:2px; }
       .legend2 i { display:inline-block; width:10px; height:3px; border-radius:2px; margin-right:5px; vertical-align:middle; }
       .legend2 i.d { background:repeating-linear-gradient(90deg,#64b5f6 0 4px,transparent 4px 7px); }
@@ -448,7 +448,7 @@ class RipacUnaCard extends RipacBase {
       .exp small { display:block; font-size:10.5px; color:var(--secondary-text-color); margin-top:3px; }
     </style><ha-card>
       <div class="hd1"><div class="shield sm" style="--c:${c}"><ha-icon icon="mdi:waves"></ha-icon></div>
-        <div class="ttl">Una kod Ripča</div>
+        <div class="tt2"><div class="ttl">Una kod Ripča</div><div class="sub">${st ? st[2] : ""}</div></div>
         <div class="lv big"><span class="lvl">${isNaN(l) ? "–" : l.toFixed(1)}</span><span class="unit">cm</span></div>
         <div class="tr" style="--tc:${tr >= 1 ? "#ef5350" : tr <= -1 ? "#42a5f5" : "var(--secondary-text-color)"}" title="${trend}">
           <ha-icon icon="${tr >= 3 ? "mdi:arrow-up-bold" : tr >= 1 ? "mdi:arrow-top-right" : tr <= -3 ? "mdi:arrow-down-bold" : tr <= -1 ? "mdi:arrow-bottom-right" : "mdi:arrow-right"}"></ha-icon>${Math.abs(tr) >= 1 ? `<small>${tr > 0 ? "+" : ""}${tr.toFixed(1)}</small>` : ""}</div>
