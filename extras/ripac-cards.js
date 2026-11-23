@@ -753,31 +753,48 @@ class RipacAcChip extends HTMLElement {
     if (!s) return;
     this._done = true;
     const a = s.attributes, mode = s.state, on = mode !== "off" && mode !== "unavailable";
-    const M = { heat: ["Grije", "#ff7043", "mdi:fire"], cool: ["Hladi", "#4fc3f7", "mdi:snowflake"], dry: ["Suši", "#26a69a", "mdi:water-percent"],
-      fan_only: ["Ventilator", "#b0bec5", "mdi:fan"], auto: ["Auto", "#ab47bc", "mdi:thermostat-auto"], off: ["Ugašena", "#9e9e9e", "mdi:power"] };
-    const [label, col, icon] = M[mode] || [mode, "#9e9e9e", "mdi:air-conditioner"];
+    const M = { heat: ["Grije", "#ff7043", "mdi:fire"], cool: ["Hladi", "#4fc3f7", "mdi:snowflake"], dry: ["Suši", "#26a69a", "mdi:water-percent"], fan_only: ["Ventilator", "#b0bec5", "mdi:fan"] };
+    const col = on && M[mode] ? M[mode][1] : "#9e9e9e";
     const t = a.temperature;
+    const modes = ["heat", "cool", "dry", "fan_only"].filter((m) => (a.hvac_modes || []).includes(m));
+    const fanTxt = { auto: "auto", low: "1", middle_low: "2", medium: "3", middle_high: "4", high: "5" }[a.fan_mode] || a.fan_mode || "";
     this.shadowRoot.innerHTML = `<style>
-      .c { display:flex; align-items:center; gap:6px; padding:5px 6px 5px 10px; border-radius:20px; background:rgba(0,0,0,.5);
-        backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); color:#fff; font:600 12.5px Inter,Roboto,sans-serif; white-space:nowrap;
-        box-shadow:${on ? `0 0 0 1.5px ${col}, 0 0 14px ${col}66` : "0 0 0 1px rgba(255,255,255,.15)"}; }
-      .m { display:flex; align-items:center; gap:5px; cursor:pointer; }
-      .m ha-icon { --mdc-icon-size:16px; color:${on ? col : "#bbb"}; }
-      .t { font-size:15px; font-weight:800; min-width:34px; text-align:center; }
-      button { border:0; width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,.14); color:#fff; font:700 16px/1 Inter,Roboto,sans-serif; cursor:pointer; padding:0; }
-      button:active { background:rgba(255,255,255,.3); }
-      .p { background:${on ? col : "rgba(255,255,255,.14)"}; display:flex; align-items:center; justify-content:center; }
-      .p ha-icon { --mdc-icon-size:15px; }
+      .c { display:flex; flex-direction:column; gap:7px; padding:8px; border-radius:18px; background:rgba(0,0,0,.55);
+        backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); color:#fff; font:600 12px Inter,Roboto,sans-serif;
+        box-shadow:${on ? `0 0 0 1.5px ${col}, 0 0 16px ${col}55` : "0 0 0 1px rgba(255,255,255,.15)"}; }
+      .r { display:flex; align-items:center; gap:6px; }
+      .ttl { flex:1; display:flex; align-items:center; gap:5px; padding-left:4px; cursor:pointer; white-space:nowrap; }
+      .ttl ha-icon { --mdc-icon-size:16px; color:${col}; }
+      button { border:0; height:30px; min-width:30px; border-radius:15px; background:rgba(255,255,255,.12); color:#fff; font:700 15px/1 Inter,Roboto,sans-serif;
+        cursor:pointer; padding:0 8px; display:flex; align-items:center; justify-content:center; gap:3px; }
+      button:active { transform:scale(.94); }
+      button ha-icon { --mdc-icon-size:17px; }
+      .m.on { background:var(--mc); box-shadow:0 0 10px var(--mc); }
+      .pw { background:${on ? col : "rgba(255,255,255,.12)"}; }
+      .t { font-size:18px; font-weight:800; min-width:42px; text-align:center; }
+      .fan { font-size:11px; padding:0 9px; }
     </style><div class="c">
-      <div class="m"><ha-icon icon="${icon}"></ha-icon><span>Klima · ${label}</span></div>
-      ${on ? `<button class="dn">−</button><span class="t">${t ?? "–"}°</span><button class="up">+</button>` : ""}
-      <button class="p" title="${on ? "Ugasi" : "Upali grijanje"}"><ha-icon icon="mdi:power"></ha-icon></button></div>`;
+      <div class="r"><div class="ttl"><ha-icon icon="${on && M[mode] ? M[mode][2] : "mdi:air-conditioner"}"></ha-icon>Klima · ${on && M[mode] ? M[mode][0] : "ugašena"}</div>
+        <button class="pw" title="${on ? "Ugasi" : "Upali"}"><ha-icon icon="mdi:power"></ha-icon></button></div>
+      <div class="r">${modes.map((m) => `<button class="m ${mode === m ? "on" : ""}" data-m="${m}" style="--mc:${M[m][1]}" title="${M[m][0]}"><ha-icon icon="${M[m][2]}"></ha-icon></button>`).join("")}</div>
+      <div class="r"><button class="dn">−</button><span class="t">${t ?? "–"}°</span><button class="up">+</button>
+        ${on ? `<button class="fan" title="Ventilator"><ha-icon icon="mdi:fan"></ha-icon>${fanTxt}</button>` : ""}</div>
+    </div>`;
     const R = this.shadowRoot;
-    R.querySelector(".m").onclick = () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: this._c.entity }, bubbles: true, composed: true }));
     const step = a.target_temp_step || 1;
-    R.querySelector(".dn")?.addEventListener("click", () => this._svc("set_temperature", { temperature: Math.max(a.min_temp || 16, (t || 21) - step) }));
-    R.querySelector(".up")?.addEventListener("click", () => this._svc("set_temperature", { temperature: Math.min(a.max_temp || 32, (t || 21) + step) }));
-    R.querySelector(".p").onclick = () => on ? this._svc("turn_off", {}) : this._svc("set_temperature", { hvac_mode: "heat", temperature: t && t <= 24 ? t : 21 });
+    const sane = (m) => (m === "cool" ? (t && t >= 22 && t <= 28 ? t : 24) : m === "heat" ? (t && t >= 16 && t <= 24 ? t : 21) : t || 22);
+    R.querySelector(".ttl").onclick = () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: this._c.entity }, bubbles: true, composed: true }));
+    R.querySelector(".dn").onclick = () => this._svc("set_temperature", { temperature: Math.max(a.min_temp || 16, (t || 21) - step) });
+    R.querySelector(".up").onclick = () => this._svc("set_temperature", { temperature: Math.min(a.max_temp || 32, (t || 21) + step) });
+    R.querySelector(".pw").onclick = () => (on ? this._svc("turn_off", {}) : this._svc("set_temperature", { hvac_mode: "heat", temperature: sane("heat") }));
+    R.querySelectorAll(".m").forEach((b) => (b.onclick = () => {
+      const m = b.dataset.m;
+      if (m === mode) return;
+      if (m === "heat" || m === "cool") this._svc("set_temperature", { hvac_mode: m, temperature: sane(m) });
+      else this._svc("set_hvac_mode", { hvac_mode: m });
+    }));
+    const fans = a.fan_modes || [];
+    R.querySelector(".fan")?.addEventListener("click", () => this._svc("set_fan_mode", { fan_mode: fans[(fans.indexOf(a.fan_mode) + 1) % fans.length] }));
   }
 }
 
