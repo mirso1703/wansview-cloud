@@ -1157,6 +1157,46 @@ class RipacOsobeCard extends HTMLElement {
     inp.addEventListener("keydown", (e) => { if (e.key === "Enter") add(); });
   }
 }
+
+/* ---------- picture-elements: oznaka pokreta → otvori zadnji video iz NVR-a ---------- */
+class RipacMotionLabel extends HTMLElement {
+  setConfig(c) { this._c = c || {}; }
+  set hass(h) {
+    this._hass = h;
+    const st = h.states[this._c.entity];
+    const txt = (this._c.prefix || "") + (st ? st.state : "–");
+    if (txt !== this._txt) { this._txt = txt; this.textContent = txt; }
+    if (!this._bound) {
+      this._bound = true;
+      this.style.cursor = "pointer";
+      this.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); this._play(); });
+    }
+  }
+  async _play() {
+    let it = null;
+    try {
+      const r = await this._hass.callWS({ type: "wansview_cloud/recordings", camera: this._c.folder, limit: 5 });
+      it = (r.items || []).find((x) => x.video) || (r.items || [])[0];
+    } catch (e) { /* ignore */ }
+    const m = document.createElement("div");
+    m.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px;font-family:Roboto,sans-serif;color:#fff";
+    const head = it ? `${it.camera} · ${it.day === new Date().toISOString().slice(0, 10) ? "danas" : it.day} ${it.time}` : "Nema snimka";
+    const media = !it ? "" : it.video
+      ? `<video src="${it.video}" ${it.image ? `poster="${it.image}"` : ""} controls autoplay playsinline style="max-width:100%;max-height:75vh;border-radius:12px;background:#000"></video>`
+      : `<img src="${it.image}" style="max-width:100%;max-height:75vh;border-radius:12px">`;
+    m.innerHTML = `<div style="font-size:15px;font-weight:600">${vEsc(head)}</div>${media}
+      <div style="display:flex;gap:10px"><button data-a="nvr" style="border:0;border-radius:18px;padding:9px 16px;background:rgba(255,255,255,.15);color:#fff;font-size:14px">Svi snimci</button>
+      <button data-a="x" style="border:0;border-radius:18px;padding:9px 16px;background:#fff;color:#000;font-size:14px">Zatvori</button></div>`;
+    m.addEventListener("click", (e) => {
+      const a = e.target.dataset && e.target.dataset.a;
+      if (e.target === m || a === "x") m.remove();
+      if (a === "nvr") { m.remove(); history.pushState(null, "", this._c.nvr || "/ripac-nvr"); window.dispatchEvent(new CustomEvent("location-changed")); }
+    });
+    document.body.appendChild(m);
+  }
+}
+
+if (!customElements.get("ripac-motion-label")) customElements.define("ripac-motion-label", RipacMotionLabel);
 if (!customElements.get("ripac-osobe-card")) customElements.define("ripac-osobe-card", RipacOsobeCard);
 if (!customElements.get("ripac-vozila-card")) customElements.define("ripac-vozila-card", RipacVozilaCard);
 if (!customElements.get("ripac-security-card")) customElements.define("ripac-security-card", RipacSecurityCard);
