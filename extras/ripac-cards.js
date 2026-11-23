@@ -99,11 +99,11 @@ const PROTOCOLS = [
   { e: "script.protokol_poplava", n: "Poplava", d: "hitno", i: "mdi:home-flood", c: "#e53935", q: "Pokrenuti PROTOKOL POPLAVA?" },
 ];
 const TOGGLES = [
-  { e: "input_boolean.vikendica_prazna", n: "Vikendica prazna", on: "Čuvam kuću", off: "Neko je tu", i: "mdi:home-lock", c: "#607d8b" },
+  { e: "input_boolean.vikendica_prazna", n: "Kuća prazna", on: "Čuvam kuću", off: "Neko je tu", i: "mdi:home-lock", c: "#607d8b" },
   { e: "input_boolean.gosti_rezim", n: "Gosti", on: "Alarmi pauzirani", off: "Isključeno", i: "mdi:account-group", c: "#26a69a" },
   { e: "alarm_control_panel.tpanel_sonoff_1001892dfe_alarm", n: "TPanel alarm", on: "Naoružan", off: "Razoružan", i: "mdi:shield-lock", c: "#ef6c00", alarm: true },
   { e: "input_boolean.hitni_alarm_poplave", n: "Alarm poplave", on: "AKTIVAN", off: "Mirno", i: "mdi:home-flood", c: "#e53935" },
-  { e: "automation.obavijest_o_pokretu_na_kameri", n: "Obavijesti kamera", on: "Javljam pokret", off: "Utišano", i: "mdi:cctv", c: "#fb8c00" },
+  { e: "automation.obavijest_o_pokretu_na_kameri", n: "Kamere", on: "Javljam pokret", off: "Utišano", i: "mdi:cctv", c: "#fb8c00" },
   { e: "automation.nocu_ugasi_vanjska_svjetla_bez_pokreta", n: "Noćno gašenje", on: "Gasi vanjska svjetla", off: "Isključeno", i: "mdi:weather-night", c: "#8e24aa" },
   { e: "input_boolean.vodostaj_na_zakljucanom_ekranu", n: "Una na ekranu", on: "Live Activity", off: "Isključeno", i: "mdi:cellphone-lock", c: "#1e88e5" },
   { e: "input_boolean.vikendica_na_zakljucanom_ekranu", n: "Kuća na ekranu", on: "Live Activity", off: "Isključeno", i: "mdi:cellphone-information", c: "#3949ab" },
@@ -131,25 +131,42 @@ class RipacSecurityCard extends RipacBase {
     if (!this._hass) return;
     const s = this._status();
     const prot = PROTOCOLS.filter((p) => this._hass.states[p.e])
-      .map((p) => `<button class="pb ${this.st(p.e) === "on" ? "run" : ""}" data-e="${p.e}" style="--c:${p.c}">
-          <div class="pi"><ha-icon icon="${p.i}"></ha-icon></div><div class="pn">${p.n}</div><div class="pd">${p.d}</div></button>`)
-      .join("");
-    const tg = TOGGLES.filter((t) => this._hass.states[t.e])
-      .map((t) => {
-        const v = this.st(t.e);
-        const on = t.alarm ? v !== "disarmed" : v === "on";
-        const sub = t.alarm && v === "triggered" ? "AKTIVIRAN!" : on ? t.on : t.off;
-        return `<div class="t ${on ? "on" : ""}" data-e="${t.e}" style="--c:${t.c}">
-          <div class="ti"><ha-icon icon="${t.i}"></ha-icon></div>
-          <div class="tx"><div class="tn">${t.n}</div><div class="ts">${sub}</div></div><div class="sw"></div></div>`;
-      })
-      .join("");
-    this.shadowRoot.innerHTML = `<style>${css}</style><ha-card>
+      .map((p) => `<button class="pb2 ${this.st(p.e) === "on" ? "run" : ""}" data-e="${p.e}" style="--c:${p.c}">${p.n}</button>`).join("");
+    const row = (t) => {
+      const v = this.st(t.e);
+      const on = t.alarm ? v !== "disarmed" : v === "on";
+      const sub = t.alarm && v === "triggered" ? "AKTIVIRAN!" : on ? t.on : t.off;
+      return `<div class="r ${on ? "on" : ""}" data-e="${t.e}" style="--c:${t.c}"><div class="rx"><div class="rn">${t.n}</div><div class="rs">${sub}</div></div><div class="sw"></div></div>`;
+    };
+    const have = TOGGLES.filter((t) => this._hass.states[t.e]);
+    const g1 = have.slice(0, 4).map(row).join(""), g2 = have.slice(4).map(row).join("");
+    this.shadowRoot.innerHTML = `<style>${css}
+      .prot2 { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+      .pb2 { border:0; cursor:pointer; border-radius:12px; padding:11px 4px; font:inherit; font-size:13px; font-weight:700; color:var(--primary-text-color);
+        background:rgba(127,127,127,.12); transition:background .2s, transform .1s; }
+      .pb2:active { transform:scale(.96); } .pb2:hover { background:color-mix(in srgb,var(--c) 25%,transparent); }
+      .pb2.run { background:var(--c); color:#fff; animation:pulse 1s infinite; }
+      .cols { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+      .grp { border-radius:14px; background:rgba(127,127,127,.07); padding:2px 12px; }
+      .gt { font-size:11px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:var(--secondary-text-color); margin:0 2px 6px; }
+      .r { display:flex; align-items:center; gap:10px; padding:10px 0; cursor:pointer; user-select:none; }
+      .r + .r { border-top:1px solid rgba(127,127,127,.14); }
+      .rx { flex:1; min-width:0; } .rn { font-size:13.5px; font-weight:600; color:var(--primary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .rs { font-size:11.5px; color:var(--secondary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .r.on .rs { color:color-mix(in srgb,var(--c) 70%,var(--primary-text-color)); }
+      .r .sw { width:30px; height:18px; border-radius:9px; background:rgba(127,127,127,.35); position:relative; flex:none; transition:background .2s; }
+      .r .sw::after { content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#fff; transition:left .2s; }
+      .r.on .sw { background:var(--c); } .r.on .sw::after { left:14px; }
+      @media (max-width:420px) { .cols { grid-template-columns:1fr; } }
+    </style><ha-card>
       <div class="hd"><div class="shield" style="--c:${s.c}"><ha-icon icon="${s.i}"></ha-icon></div>
         <div><div class="ttl">${esc(s.t)}</div><div class="sub">${esc(s.s)}</div></div></div>
-      <div class="lbl">Protokoli</div><div class="prot">${prot}</div>
-      <div class="lbl">Režim i obavijesti</div><div class="tg">${tg}</div></ha-card>`;
-    this.shadowRoot.querySelectorAll(".pb").forEach((b) =>
+      <div class="prot2">${prot}</div>
+      <div class="cols" style="margin-top:12px">
+        <div><div class="gt">Čuvanje</div><div class="grp">${g1}</div></div>
+        <div><div class="gt">Obavijesti</div><div class="grp">${g2}</div></div>
+      </div></ha-card>`;
+    this.shadowRoot.querySelectorAll(".pb2").forEach((b) =>
       b.addEventListener("click", () => {
         const p = PROTOCOLS.find((x) => x.e === b.dataset.e);
         if (p.q && !confirm(p.q)) return;
@@ -157,7 +174,7 @@ class RipacSecurityCard extends RipacBase {
         b.classList.add("run");
       })
     );
-    this.shadowRoot.querySelectorAll(".t").forEach((el) => {
+    this.shadowRoot.querySelectorAll(".r").forEach((el) => {
       let timer;
       el.addEventListener("pointerdown", () => (timer = setTimeout(() => ((timer = null), this._more(el.dataset.e)), 600)));
       el.addEventListener("pointerup", () => {
@@ -561,10 +578,47 @@ class RipacSolarCard extends RipacBase {
   }
 }
 
+class RipacBriefCard extends RipacBase {
+  _watch() {
+    return ["input_boolean.sazetak_engleski"];
+  }
+  set hass(h) {
+    super.hass = h;
+    if (!this._sub && this._config?.template) {
+      this._sub = h.connection
+        .subscribeMessage((m) => { if (m.result !== undefined) { this._out = String(m.result); this._render(); } }, { type: "render_template", template: this._config.template })
+        .catch(() => (this._sub = null));
+    }
+  }
+  disconnectedCallback() {
+    if (this._sub) this._sub.then((u) => u && u()).catch(() => {});
+    this._sub = null;
+  }
+  connectedCallback() {
+    if (this._hass && !this._sub) this.hass = this._hass;
+  }
+  _render() {
+    if (!this._hass) return;
+    const en = this.st("input_boolean.sazetak_engleski") === "on";
+    const html = (this._out || "").replace(/\n/g, " ");
+    this.shadowRoot.innerHTML = `<style>
+      :host { display:block; } .b { position:relative; padding:4px 2px; color:var(--primary-text-color); font-size:15px; line-height:1.6; }
+      .b h2 { margin:0 64px 8px 0; font-size:22px; font-weight:700; }
+      .lang { position:absolute; top:4px; right:2px; display:flex; background:rgba(127,127,127,.15); border-radius:10px; padding:2px; }
+      .lang button { border:0; background:transparent; color:var(--secondary-text-color); font:inherit; font-size:11.5px; font-weight:800; padding:4px 8px; border-radius:8px; cursor:pointer; }
+      .lang button.on { background:var(--card-background-color,#262626); color:var(--primary-text-color); box-shadow:0 1px 3px rgba(0,0,0,.3); }
+    </style><div class="b"><div class="lang"><button data-l="bs" class="${en ? "" : "on"}">BS</button><button data-l="en" class="${en ? "on" : ""}">EN</button></div>${html}</div>`;
+    this.shadowRoot.querySelectorAll(".lang button").forEach((b) =>
+      b.addEventListener("click", () => this._hass.callService("input_boolean", b.dataset.l === "en" ? "turn_on" : "turn_off", { entity_id: "input_boolean.sazetak_engleski" }))
+    );
+  }
+}
+
 if (!customElements.get("ripac-security-card")) customElements.define("ripac-security-card", RipacSecurityCard);
 if (!customElements.get("ripac-una-card")) customElements.define("ripac-una-card", RipacUnaCard);
 if (!customElements.get("ripac-net-card")) customElements.define("ripac-net-card", RipacNetCard);
 if (!customElements.get("ripac-solar-card")) customElements.define("ripac-solar-card", RipacSolarCard);
+if (!customElements.get("ripac-brief-card")) customElements.define("ripac-brief-card", RipacBriefCard);
 if (!customElements.get("ripac-care-card")) customElements.define("ripac-care-card", RipacCareCard);
 window.customCards = window.customCards || [];
 window.customCards.push(
