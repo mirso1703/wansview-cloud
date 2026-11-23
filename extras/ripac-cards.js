@@ -791,7 +791,7 @@ class RipacAcChip extends HTMLElement {
       ${part === "controls"
         ? `<div class="ttl" title="Dodirni za promjenu režima"><ha-icon icon="${M[mode] ? M[mode][2] : "mdi:air-conditioner"}"></ha-icon>${M[mode] ? M[mode][0] : mode}</div>
            <div class="sep"></div><button class="dn">−</button><span class="t">${t ?? "–"}°</span><button class="up">+</button>`
-        : `<div class="ttl stat"><ha-icon icon="${on && M[mode] ? M[mode][2] : icon0}"></ha-icon>${on ? `${this._c.name || "Klima"} · ${t ?? "–"}°` : `${this._c.name || "Klima"} · ${this._c.off_text || "ugašena"}`}</div>
+        : `<div class="ttl stat"><ha-icon icon="${on && M[mode] ? M[mode][2] : icon0}"></ha-icon>${this._c.compact ? (on ? `${t ?? "–"}°` : "") : on ? `${this._c.name || "Klima"} · ${t ?? "–"}°` : `${this._c.name || "Klima"} · ${this._c.off_text || "ugašena"}`}</div>
            <button class="pw" title="${on ? "Ugasi" : "Upali"}"><ha-icon icon="mdi:power"></ha-icon></button>`}
     </div>`;
     const R = this.shadowRoot;
