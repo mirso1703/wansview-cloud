@@ -55,6 +55,11 @@ const css = `
   .un { font-size:11px; color:var(--secondary-text-color); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .uv { font-size:15px; font-weight:800; color:var(--primary-text-color); }
   .ud { font-size:11px; font-weight:700; }
+  .fc2 { margin-top:10px; padding:10px 12px; border-radius:12px; background:rgba(127,127,127,.08); }
+  .wr { display:flex; align-items:center; gap:9px; font-size:13px; color:var(--primary-text-color); padding:4px 0; }
+  .wr + .wr { border-top:1px solid rgba(127,127,127,.12); padding-top:7px; margin-top:3px; }
+  .wr ha-icon { --mdc-icon-size:18px; color:var(--c); flex:none; }
+  .wr b { color:var(--c); }
   .fc { margin-top:10px; padding:10px 12px; border-radius:12px; background:rgba(127,127,127,.08); font-size:13px; color:var(--primary-text-color);
     display:flex; gap:10px; align-items:center; }
   .fc ha-icon { color:var(--c); flex:none; }
@@ -242,22 +247,25 @@ class RipacUnaCard extends RipacBase {
       const hm = d.toLocaleTimeString("bs-BA", { hour: "2-digit", minute: "2-digit" });
       return d.toDateString() === new Date().toDateString() ? `od ${hm}` : d.toDateString() === tom.toDateString() ? `sutra od ${hm}` : `od ${d.getDate()}.${d.getMonth() + 1}. ${hm}`;
     };
-    const wchips = warns
-      .map((w) => `<div class="chip w" style="--c:${wcol[w.level]}"><ha-icon icon="${EV_ICON[w.event_hr] || "mdi:alert"}"></ha-icon>${esc(w.level_name)} · ${esc(EV_GEN[w.event_hr] || w.event_hr)} ${when(w)}</div>`)
+    const wrows = warns
+      .map((w) => `<div class="wr" style="--c:${wcol[w.level]}"><ha-icon icon="${EV_ICON[w.event_hr] || "mdi:alert"}"></ha-icon>
+        <span><b>${esc(w.level_name)} upozorenje</b> · ${esc(EV_GEN[w.event_hr] || w.event_hr)} ${when(w)}${w.expires ? ` do ${new Date(w.expires).toLocaleTimeString("bs-BA", { hour: "2-digit", minute: "2-digit" })}` : ""}</span></div>`)
       .join("");
-    const fcText = prog.startsWith("raste")
-      ? `<b>Prognoza: ${esc(prog)}</b>`
+    const rising = prog.startsWith("raste");
+    const fcText = rising
+      ? `<b>${esc(prog)}</b>`
       : rain >= 15
-      ? `Najavljeno <b>${Math.round(rain)} mm</b> kiše u 24 h – Una bi mogla porasti.`
-      : `Prognoza: ${esc(prog.split("·")[0].trim() || "stabilno")}${rain ? ` · kiša 24 h: ${Math.round(rain)} mm` : ""}.`;
-    const fcIcon = prog.startsWith("raste") || rain >= 15 ? "mdi:weather-pouring" : "mdi:weather-cloudy-clock";
+      ? `Najavljeno <b>${Math.round(rain)} mm</b> kiše u 24 h – Una bi mogla porasti`
+      : `Una ${esc(prog.split("·")[0].trim() || "stabilna")}${rain ? ` · kiša u 24 h: ${Math.round(rain)} mm` : " · bez kiše u 24 h"}`;
+    const fcIcon = rising || rain >= 15 ? "mdi:weather-pouring" : "mdi:weather-cloudy-clock";
+    const fcCol = rising ? "#42a5f5" : rain >= 15 ? "#64b5f6" : "var(--secondary-text-color)";
     const ups = UPSTREAM.filter(([e]) => this._hass.states[e])
       .map(([e, r, n]) => {
         const v = parseFloat(this.st(e));
         const d = parseFloat(this.st(r)) || 0;
         const col = d >= 15 ? "#e53935" : d >= 5 ? "#ffb300" : d <= -3 ? "#42a5f5" : "var(--secondary-text-color)";
         return `<div class="us"><div class="un">${n}</div><div class="uv">${isNaN(v) ? "–" : Math.round(v)} <span class="unit" style="font-size:11px">cm</span></div>
-          <div class="ud" style="color:${col}">${d > 0 ? "+" : ""}${d.toFixed(0)} cm / 3 h</div></div>`;
+          <div class="ud" style="color:${col}">${Math.round(d) > 0 ? "+" : ""}${Math.round(d) || 0} cm / 3 h</div></div>`;
       })
       .join("");
     this.shadowRoot.innerHTML = `<style>${css}</style><ha-card>
@@ -267,8 +275,8 @@ class RipacUnaCard extends RipacBase {
       <div class="big"><span class="lvl">${isNaN(l) ? "–" : l.toFixed(1)}</span><span class="unit">cm</span>
         ${st && l < 180 ? `<span class="sub" style="margin-left:8px">još ${Math.round(180 - l)} cm do puta</span>` : ""}</div>
       ${this._spark(c)}
-      <div class="fc" style="--c:${prog.startsWith("raste") || rain >= 15 ? "#42a5f5" : "var(--secondary-text-color)"}"><ha-icon icon="${fcIcon}"></ha-icon><div>${fcText}</div></div>
-      ${wchips ? `<div class="row2" style="margin-top:8px">${wchips}</div>` : ""}
+      <div class="fc2"><div class="lbl" style="margin:0 0 6px">Prognoza i upozorenja</div>
+        <div class="wr" style="--c:${fcCol}"><ha-icon icon="${fcIcon}"></ha-icon><span>${fcText}</span></div>${wrows}</div>
       ${ups ? `<div class="lbl">Uzvodno</div><div class="up">${ups}</div>` : ""}
     </ha-card>`;
     this.shadowRoot.querySelector("ha-card").addEventListener("click", (ev) => {
