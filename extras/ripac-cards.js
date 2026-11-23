@@ -839,7 +839,7 @@ class RipacSwitchChip extends HTMLElement {
       .pw { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:${on ? col : "rgba(255,255,255,.14)"}; margin-left:4px; }
       .w { opacity:.75; font-weight:500; }
     </style><div class="c"><span class="i"><ha-icon icon="${this._c.icon}"></ha-icon></span>
-      <span>${this._c.name} · ${on ? this._c.on_text : this._c.off_text}${on && pw ? ` <span class="w">${pw}</span>` : ""}</span>
+      ${this._c.compact ? (on ? `<span>${pw || this._c.on_text}</span>` : "") : `<span>${this._c.name} · ${on ? this._c.on_text : this._c.off_text}${on && pw ? ` <span class="w">${pw}</span>` : ""}</span>`}
       <span class="pw"><ha-icon icon="mdi:power"></ha-icon></span></div>`;
     const c = this.shadowRoot.querySelector(".c");
     let lp;
