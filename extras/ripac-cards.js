@@ -751,9 +751,10 @@ class RipacAcChip extends HTMLElement {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
   }
   set hass(h) {
-    const old = this._h?.states[this._c.entity];
+    const ids = [this._c.entity, this._c.power, this._c.energy].filter(Boolean);
+    const changed = !this._h || ids.some((e) => this._h.states[e] !== h.states[e]);
     this._h = h;
-    if (old !== h.states[this._c.entity] || !this._done) this._render();
+    if (changed || !this._done) this._render();
   }
   _svc(service, data) {
     this._h.callService("climate", service, { entity_id: this._c.entity, ...data });
@@ -770,6 +771,11 @@ class RipacAcChip extends HTMLElement {
     const col = on && M[mode] ? M[mode][1] : "#9e9e9e";
     const t = a.temperature;
     const icon0 = this._c.icon || "mdi:air-conditioner";
+    const pv = this._c.power ? parseFloat(this._h.states[this._c.power]?.state) : NaN;
+    const ev = this._c.energy ? parseFloat(this._h.states[this._c.energy]?.state) : NaN;
+    const pTxt = !isNaN(pv) && pv > 5 ? (pv >= 1000 ? `${(pv / 1000).toFixed(1)} kW` : `${Math.round(pv)} W`) : "";
+    const eTxt = !isNaN(ev) && ev > 0.05 ? `${ev.toFixed(1)} kWh danas` : "";
+    const extra = [pTxt, eTxt].filter(Boolean).join(" · ");
     const modes = ["heat", "cool", "dry", "fan_only"].filter((m) => (a.hvac_modes || []).includes(m));
     const fanTxt = { auto: "auto", low: "1", middle_low: "2", medium: "3", middle_high: "4", high: "5" }[a.fan_mode] || a.fan_mode || "";
     this.shadowRoot.innerHTML = `<style>
@@ -791,7 +797,7 @@ class RipacAcChip extends HTMLElement {
       ${part === "controls"
         ? `<div class="ttl" title="Dodirni za promjenu režima"><ha-icon icon="${M[mode] ? M[mode][2] : "mdi:air-conditioner"}"></ha-icon>${M[mode] ? M[mode][0] : mode}</div>
            <div class="sep"></div><button class="dn">−</button><span class="t">${t ?? "–"}°</span><button class="up">+</button>`
-        : `<div class="ttl stat"><ha-icon icon="${on && M[mode] ? M[mode][2] : icon0}"></ha-icon>${this._c.compact ? (on ? `${t ?? "–"}°` : "") : on ? `${this._c.name || "Klima"} · ${t ?? "–"}°` : `${this._c.name || "Klima"} · ${this._c.off_text || "ugašena"}`}</div>
+        : `<div class="ttl stat"><ha-icon icon="${on && M[mode] ? M[mode][2] : icon0}"></ha-icon>${this._c.compact ? (on ? `${t ?? "–"}°${pTxt ? ` <span style="opacity:.75;font-weight:500">${pTxt}</span>` : ""}` : "") : on ? `${this._c.name || "Klima"} · ${t ?? "–"}°${extra ? ` <span style="opacity:.75;font-weight:500">· ${extra}</span>` : ""}` : `${this._c.name || "Klima"} · ${this._c.off_text || "ugašena"}${eTxt ? ` <span style="opacity:.75;font-weight:500">· ${eTxt}</span>` : ""}`}</div>
            <button class="pw" title="${on ? "Ugasi" : "Upali"}"><ha-icon icon="mdi:power"></ha-icon></button>`}
     </div>`;
     const R = this.shadowRoot;
@@ -930,7 +936,7 @@ window.customCards.push(
     [/\bsutra\b/g, "tomorrow"], [/\bdanas\b/g, "today"], [/\bu srijedu\b/g, "on Wednesday"], [/\bu četvrtak\b/g, "on Thursday"], [/\bu petak\b/g, "on Friday"],
     [/\bu subotu\b/g, "on Saturday"], [/\bu nedjelju\b/g, "on Sunday"], [/\bu ponedjeljak\b/g, "on Monday"], [/\bu utorak\b/g, "on Tuesday"],
     [/Kuća radi na solaru/g, "House is running on solar"], [/, višak puni bateriju/g, ", surplus charges the battery"], [/Kuća je na mreži/g, "House is on the grid"], [/, solar puni bateriju/g, ", solar charges the battery"],
-    [/^prognoza /, "forecast "], [/ cikl\./g, " cycles"], [/ ciklusa/g, " cycles"], [/^daje /, "gives "], [/^puni /, "charging "],
+    [/^prognoza /, "forecast "], [/ cikl\./g, " cycles"], [/ kWh danas/g, " kWh today"], [/ ciklusa/g, " cycles"], [/^daje /, "gives "], [/^puni /, "charging "],
     [/(\d+) uređaja/g, "$1 devices"], [/ · AP offline/g, " · AP offline"], [/^čeka /, "standby "], [/^AKTIVNA /, "ACTIVE "], [/4G ovaj mj\./g, "4G this month"], [/(\d+) nova SMS/g, "$1 new SMS"], [/SMS: nema novih/g, "SMS: none new"], [/ ovaj mj\./g, " this month"], [/glavna veza · /g, "main link · "], [/^čeka · /, "standby · "], [/^AKTIVNA · /, "ACTIVE · "],
     [/u vidnom polju/g, "in view"], [/iznad horizonta/g, "above horizon"], [/^(danas|sutra) · za (.+)$/, (m, d, r) => `${d === "danas" ? "today" : "tomorrow"} · in ${r}`],
     [/satelita iznad horizonta, nijedan u vidnom polju tanjira/g, "satellites above horizon, none in the dish's view"],
