@@ -661,6 +661,8 @@ class RipacSolarCard extends RipacBase {
     const pvToday = n(Q + "energy_today"), fcToday = n("sensor.energy_production_today"), fcTom = n("sensor.energy_production_tomorrow");
     const W = (v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)} kW` : `${Math.round(v)} W`);
     const status = grid > 30 ? `Kuća je na mreži${sol > 20 ? ", solar puni bateriju" : ""}` : sol > 20 && sol >= load ? "Kuća radi na solaru" + (bat > 20 ? ", višak puni bateriju" : "") : "Kuća radi na bateriji";
+    const invUse = Math.max(0, sol + grid - bat - load);
+    const uses = `Potrošnja ${W(load + invUse)} · kuća ${W(load)} + inverter ${W(invUse)}`;
     // flows: [active, reverse]
     const f = { sol: sol > 20, grid: Math.abs(grid) > 30, load: load > 5, bat: Math.abs(bat) > 20 };
     const C = { sol: "#ffca28", grid: "#b39ddb", load: "#90caf9", bat: "#69f0ae" };
@@ -682,7 +684,7 @@ class RipacSolarCard extends RipacBase {
       ${nd(160, 40, C.sol, "mdi:solar-panel-large", W(sol), visak ? "višak" : "solar", f.sol)}
       ${nd(40, 125, C.grid, "mdi:transmission-tower", W(grid), esc(tar).toLowerCase() || "mreža", f.grid)}
       ${nd(280, 125, C.load, "mdi:home-lightning-bolt", W(load), "kuća", f.load)}
-      <div class="nd ctr" style="${pos(160, 125)}"><ha-icon icon="mdi:sine-wave"></ha-icon><div class="nsb">${Math.round(inv)}%</div></div>
+      <div class="nd ctr" style="${pos(160, 125)}" title="Opterećenje ${Math.round(inv)}%"><ha-icon icon="mdi:sine-wave"></ha-icon><div class="cv">${W(invUse)}</div><div class="nsb">inverter</div></div>
       ${nd(160, 210, socCol, batIcon, `${Math.round(soc)}%`, bat > 20 ? `+${W(bat)}` : bat < -20 ? `−${W(-bat)}` : "miruje", f.bat)}
     </div>`;
     const cyc = this.st("sensor.ciklusi_baterije"), vmin = this.st("sensor.ripac_q0048088723771_baterija_napon_min_24h"), vnow = this.st(Q + "battery_voltage");
@@ -701,7 +703,7 @@ class RipacSolarCard extends RipacBase {
       .nd ha-icon { --mdc-icon-size:22px; color:rgba(255,255,255,.45); } .nd.on ha-icon { color:var(--c); }
       .nv { font-size:15px; font-weight:800; color:#fff; line-height:1.15; margin-top:1px; }
       .nsb { font-size:10px; color:#a9b6cf; }
-      .nd.ctr { width:12.5%; background:rgba(255,255,255,.08); } .nd.ctr ha-icon { --mdc-icon-size:16px; color:#cfd8ea; }
+      .nd.ctr { width:15.5%; background:rgba(255,255,255,.08); } .nd.ctr ha-icon { --mdc-icon-size:15px; color:#cfd8ea; } .nd.ctr .cv { font-size:11.5px; font-weight:800; color:#fff; line-height:1.1; } .nd.ctr .nsb { font-size:8.5px; }
       .nd:last-of-type { box-shadow:none; background:color-mix(in srgb,var(--c) 10%,transparent); }
       .kp { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:8px; }
       .k { padding:9px; border-radius:12px; background:rgba(255,255,255,.06); cursor:pointer; }
@@ -710,7 +712,7 @@ class RipacSolarCard extends RipacBase {
       .ks { font-size:11px; color:#a9b6cf; margin-top:1px; }
       .pb2 { height:4px; border-radius:2px; background:rgba(255,255,255,.1); margin-top:5px; overflow:hidden; } .pb2 i { display:block; height:100%; background:#ffca28; border-radius:2px; }
     </style><ha-card class="sol">
-      <div class="top"><div style="flex:1">${this._config.no_title ? `<div class="ttl" style="font-size:15px">${status}</div>` : `<div class="ttl">Solar i baterija</div><div class="sub">${status}</div>`}</div>
+      <div class="top"><div style="flex:1">${this._config.no_title ? `<div class="ttl" style="font-size:15px">${status}</div><div class="sub">${uses}</div>` : `<div class="ttl">Solar i baterija</div><div class="sub">${status}</div><div class="sub">${uses}</div>`}</div>
         <div class="pill" data-e="select.ripac_q0048088723771_ripac_output_priority" title="Režim invertera">${{ SOL: "☀️ Solar prvo", SBU: "🔋 Solar → baterija → mreža", SUB: "☀️ Solar → mreža → baterija", UTI: "🔌 Mreža prvo" }[mode.trim()] || esc(mode.trim())}</div>
         <div class="pill ai ${ai ? "on" : ""}" data-tg="input_boolean.pametno_upravljanje_solarom" title="Pametno upravljanje"><ha-icon icon="mdi:robot"></ha-icon>${ai ? "Pametno: uklj." : "Pametno: isklj."}</div></div>
       ${svg}
@@ -1259,7 +1261,7 @@ window.customCards.push(
     "195 voda na putu": "195 water on road", "205 put plavi": "205 road floods", "sada": "now", "+1 dan": "+1 day", "+2 dana": "+2 days", "+3 dana": "+3 days",
     "Žuto upozorenje": "Yellow warning", "Narandžasto upozorenje": "Orange warning", "Crveno upozorenje": "Red warning",
     // solar
-    "Kuća radi na bateriji": "House is running on battery", "Ručno": "Manual", "Pametno: uklj.": "Smart: on", "Pametno: isklj.": "Smart: off", "☀️ Solar prvo": "☀️ Solar first", "🔋 Solar → baterija → mreža": "🔋 Solar → battery → grid", "☀️ Solar → mreža → baterija": "☀️ Solar → grid → battery", "🔌 Mreža prvo": "🔌 Grid first", "Baterije": "Batteries", "miruje": "idle", "kuća": "house", "višak": "surplus",
+    "Kuća radi na bateriji": "House is running on battery", "Ručno": "Manual", "Pametno: uklj.": "Smart: on", "Pametno: isklj.": "Smart: off", "☀️ Solar prvo": "☀️ Solar first", "🔋 Solar → baterija → mreža": "🔋 Solar → battery → grid", "☀️ Solar → mreža → baterija": "☀️ Solar → grid → battery", "🔌 Mreža prvo": "🔌 Grid first", "Baterije": "Batteries", "miruje": "idle", "kuća": "house", "višak": "surplus", "inverter": "inverter",
     "jeftina": "cheap", "skupa": "expensive", "mreža": "grid", "Solar danas": "Solar today", "Baterija": "Battery",
     "☀️ dobar dan": "☀️ good day", "⛅ osrednje": "⛅ moderate", "☁️ slabo sunca": "☁️ little sun",
     // internet / sky
@@ -1292,7 +1294,7 @@ window.customCards.push(
     [/\bupozorenje\b/g, "warning"], [/hladnoća/g, "cold"], [/vjetar/g, "wind"], [/grmljavina/g, "thunderstorm"], [/poledica/g, "ice"], [/snijeg/g, "snow"], [/vrućina/g, "heat"],
     [/\bsutra\b/g, "tomorrow"], [/\bdanas\b/g, "today"], [/\bu srijedu\b/g, "on Wednesday"], [/\bu četvrtak\b/g, "on Thursday"], [/\bu petak\b/g, "on Friday"],
     [/\bu subotu\b/g, "on Saturday"], [/\bu nedjelju\b/g, "on Sunday"], [/\bu ponedjeljak\b/g, "on Monday"], [/\bu utorak\b/g, "on Tuesday"],
-    [/Kuća radi na solaru/g, "House is running on solar"], [/, višak puni bateriju/g, ", surplus charges the battery"], [/Kuća je na mreži/g, "House is on the grid"], [/, solar puni bateriju/g, ", solar charges the battery"],
+    [/Kuća radi na solaru/g, "House is running on solar"], [/Potrošnja /g, "Usage "], [/ · kuća /g, " · house "], [/, višak puni bateriju/g, ", surplus charges the battery"], [/Kuća je na mreži/g, "House is on the grid"], [/, solar puni bateriju/g, ", solar charges the battery"],
     [/^prognoza /, "forecast "], [/ cikl\./g, " cycles"], [/ kWh danas/g, " kWh today"], [/ ciklusa/g, " cycles"], [/^daje /, "gives "], [/^puni /, "charging "],
     [/(\d+) uređaja/g, "$1 devices"], [/ · AP offline/g, " · AP offline"], [/^čeka /, "standby "], [/^AKTIVNA /, "ACTIVE "], [/4G ovaj mj\./g, "4G this month"], [/(\d+) nova SMS/g, "$1 new SMS"], [/SMS: nema novih/g, "SMS: none new"], [/ ovaj mj\./g, " this month"], [/glavna veza · /g, "main link · "], [/^čeka · /, "standby · "], [/^AKTIVNA · /, "ACTIVE · "],
     [/u vidnom polju/g, "in view"], [/iznad horizonta/g, "above horizon"], [/^(danas|sutra) · za (.+)$/, (m, d, r) => `${d === "danas" ? "today" : "tomorrow"} · in ${r}`],
