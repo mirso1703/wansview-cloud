@@ -662,7 +662,7 @@ class RipacSolarCard extends RipacBase {
     const W = (v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)} kW` : `${Math.round(v)} W`);
     const status = grid > 30 ? `Kuća je na mreži${sol > 20 ? ", solar puni bateriju" : ""}` : sol > 20 && sol >= load ? "Kuća radi na solaru" + (bat > 20 ? ", višak puni bateriju" : "") : "Kuća radi na bateriji";
     // flows: [active, reverse]
-    const f = { sol: sol > 20, grid: grid > 30, load: load > 5, bat: Math.abs(bat) > 20 };
+    const f = { sol: sol > 20, grid: Math.abs(grid) > 30, load: load > 5, bat: Math.abs(bat) > 20 };
     const C = { sol: "#ffca28", grid: "#b39ddb", load: "#90caf9", bat: "#69f0ae" };
     const socCol = soc < 25 ? "#ef5350" : soc < 50 ? "#ffb300" : C.bat;
     const R = 34, circ = 2 * Math.PI * R;
@@ -673,9 +673,9 @@ class RipacSolarCard extends RipacBase {
     const nd = (x, y, col, icon, val, sub, on) => `<div class="nd ${on ? "on" : ""}" style="${pos(x, y)};--c:${col}"><ha-icon icon="${icon}"></ha-icon><div class="nv">${val}</div>${sub ? `<div class="nsb">${sub}</div>` : ""}</div>`;
     const svg = `<div class="fw"><svg viewBox="0 0 320 250">
       ${path("p1", "M160,74 L160,105", f.sol, C.sol)}
-      ${path("p2", "M74,125 L140,125", f.grid, C.grid)}
+      ${path("p2", "M74,125 L140,125", f.grid, C.grid, grid < 0)}
       ${path("p3", "M180,125 L246,125", f.load, C.load)}
-      ${path("p4", "M160,145 L160,176", f.bat, C.bat, bat > 0)}
+      ${path("p4", "M160,145 L160,176", f.bat, C.bat, bat < 0)}
       <circle cx="160" cy="210" r="${R}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="4"/>
       <circle cx="160" cy="210" r="${R}" fill="none" stroke="${socCol}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${(soc / 100) * circ} ${circ}" transform="rotate(-90 160 210)"/>
     </svg>
