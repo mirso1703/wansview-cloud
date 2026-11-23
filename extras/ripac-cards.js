@@ -873,7 +873,7 @@ class RipacSwitchChip extends HTMLElement {
 
 
 /* ---------- Vozila: poznata / nepoznata (todo.poznata_vozila, polja u opisu) ---------- */
-const VKEYS = ["model", "boja", "vlasnik", "poznato", "viđeno"];
+const VKEYS = ["model", "boja", "vlasnik", "mobitel", "poznato", "viđeno"];
 function vParse(desc) {
   const o = {};
   (desc || "").split("\n").forEach((l) => { const m = l.match(/^\s*([^:]+):\s*(.*)$/); if (m) o[m[1].trim().toLowerCase()] = m[2].trim(); });
@@ -906,13 +906,14 @@ class RipacVozilaCard extends HTMLElement {
       } catch (e) { this._img[it.summary] = null; }
     }));
     this._render();
+    this._syncPhones();
   }
   async _svc(service, data) { await this._hass.callService("todo", service, data, { entity_id: this._c.entity }); }
   async _save(uid) {
     const it = this._items.find((i) => i.uid === uid); if (!it) return;
     const row = this.shadowRoot.querySelector(`[data-uid="${uid}"]`);
     const o = vParse(it.description);
-    row.querySelectorAll("input[data-k]").forEach((i) => { o[i.dataset.k] = i.type === "checkbox" ? (i.checked ? "da" : "ne") : i.value.trim(); });
+    row.querySelectorAll("input[data-k], select[data-k]").forEach((i) => { o[i.dataset.k] = i.type === "checkbox" ? (i.checked ? "da" : "ne") : i.value.trim(); });
     const plate = vPlate(row.querySelector("input[data-plate]").value) || it.summary;
     await this._svc("update_item", { item: uid, rename: plate, description: vDesc(o) });
   }
@@ -924,6 +925,31 @@ class RipacVozilaCard extends HTMLElement {
       vlasnik: f.querySelector("[data-n=vl]").value.trim(), poznato: "da", "viđeno": "" };
     await this._svc("add_item", { item: plate, description: vDesc(o) });
     this._adding = false;
+  }
+  _phones() {
+    const st = this._hass.states;
+    return Object.keys(st).filter((e) => {
+      if (!e.startsWith("device_tracker.")) return false;
+      const a = st[e].attributes;
+      if (a.source_type !== "router") return /mobitel/.test(e);
+      const b = parseInt(String(a.mac || "").slice(0, 2), 16);
+      return /mobitel|phone|iphone|android|galaxy/i.test(e + (a.hostname || "")) || (!isNaN(b) && (b & 2));
+    });
+  }
+  _phoneOpts(cur) {
+    const st = this._hass.states;
+    const list = this._phones(); if (cur && !list.includes(cur)) list.push(cur);
+    return `<option value="">— nema —</option>` + list.map((e) => {
+      const s = st[e]; const nm = s ? (s.attributes.friendly_name || e) : e;
+      return `<option value="${e}" ${e === cur ? "selected" : ""}>${vEsc(nm)}${s && s.state === "home" ? " · na WiFi-ju" : ""}</option>`;
+    }).join("");
+  }
+  async _syncPhones() {
+    const m = {};
+    (this._items || []).forEach((it) => { const o = vParse(it.description); if (o.mobitel && o.poznato === "da") m[o.mobitel] = o.vlasnik || it.summary; });
+    const v = JSON.stringify(m);
+    if (v.length <= 255 && this._hass.states["input_text.poznati_mobiteli"] && this._hass.states["input_text.poznati_mobiteli"].state !== v)
+      await this._hass.callService("input_text", "set_value", { entity_id: "input_text.poznati_mobiteli", value: v });
   }
   _render() {
     if (!this._hass) return;
@@ -941,7 +967,8 @@ class RipacVozilaCard extends HTMLElement {
         <div class="grid">
           <label>Model<input data-k="model" value="${vEsc(o.model)}" placeholder="npr. VW Golf 7"></label>
           <label>Boja<input data-k="boja" value="${vEsc(o.boja)}" placeholder="boja"></label>
-          <label class="wide">Vlasnik<input data-k="vlasnik" value="${vEsc(o.vlasnik)}" placeholder="čije je auto?"></label>
+          <label>Vlasnik<input data-k="vlasnik" value="${vEsc(o.vlasnik)}" placeholder="čije je auto?"></label>
+          <label>Mobitel<select data-k="mobitel">${this._phoneOpts(o.mobitel)}</select></label>
         </div>
         ${o["viđeno"] ? `<div class="seen"><ha-icon icon="mdi:eye-outline"></ha-icon>${vEsc(o["viđeno"])}</div>` : ""}
       </div>`;
@@ -964,12 +991,12 @@ class RipacVozilaCard extends HTMLElement {
       .sw i:after { content:""; position:absolute; left:3px; top:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition:.2s; }
       .sw input:checked + i { background:#4caf50; } .sw input:checked + i:after { left:21px; }
       .del { background:none; border:0; color:var(--secondary-text-color); cursor:pointer; padding:2px; } .del ha-icon { --mdc-icon-size:18px; }
-      .grid { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); gap:8px; margin-top:8px; }
-      .grid .wide { grid-column:1 / -1; }
+      .grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; margin-top:8px; }
+      .grid .wide { grid-column:1 / -1; } label select { appearance:auto; }
       label { display:flex; flex-direction:column; gap:3px; font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; color:var(--secondary-text-color); }
-      label input, .new input { font-size:14px; text-transform:none; letter-spacing:0; color:var(--primary-text-color); background:rgba(127,127,127,.12);
+      label input, label select, .new input { font-size:14px; text-transform:none; letter-spacing:0; color:var(--primary-text-color); background:rgba(127,127,127,.12);
         border:1px solid transparent; border-radius:9px; padding:7px 9px; outline:none; min-width:0; width:100%; box-sizing:border-box; }
-      label input:focus, .new input:focus { border-color:var(--primary-color); }
+      label input:focus, label select:focus, .new input:focus { border-color:var(--primary-color); }
       .seen { display:flex; align-items:center; gap:5px; margin-top:7px; font-size:11.5px; color:var(--secondary-text-color); } .seen ha-icon { --mdc-icon-size:14px; }
       .empty { font-size:13px; color:var(--secondary-text-color); padding:6px 2px 10px; }
       .addb { width:100%; border:1px dashed rgba(127,127,127,.4); background:none; color:var(--primary-color); border-radius:12px; padding:9px; font-size:14px; cursor:pointer; }
@@ -990,7 +1017,7 @@ class RipacVozilaCard extends HTMLElement {
     R.querySelectorAll(".ph").forEach((im) => im.addEventListener("click", () => window.open(im.src, "_blank")));
     R.querySelectorAll(".v").forEach((row) => {
       const uid = row.dataset.uid;
-      row.querySelectorAll("input").forEach((i) => i.addEventListener("change", () => this._save(uid)));
+      row.querySelectorAll("input, select").forEach((i) => i.addEventListener("change", () => this._save(uid)));
       row.querySelector(".del").addEventListener("click", async () => {
         if (confirm(`Obrisati ${row.querySelector(".plate").value}?`)) await this._svc("remove_item", { item: [uid] });
       });
