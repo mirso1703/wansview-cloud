@@ -603,7 +603,7 @@ class RipacSolarCard extends RipacBase {
   _watch() {
     return [Q + "solar_power", Q + "grid_power", Q + "output_power", Q + "battery_power", Q + "load_percentage", Q + "battery_voltage", Q + "energy_today",
       "sensor.baterija_soc_stabilno", "select.ripac_q0048088723771_ripac_output_priority", "sensor.tarifa_struje", "input_boolean.pametno_upravljanje_solarom",
-      "sensor.energy_production_today", "sensor.energy_production_tomorrow", "sensor.ciklusi_baterije", "sensor.ripac_q0048088723771_baterija_napon_min_24h", "binary_sensor.visak_solara"];
+      "sensor.energy_production_today", "sensor.energy_production_tomorrow", "sensor.baterije_energija_bms", "sensor.sh24100_h_01606_battery", "sensor.sh24100_h_01488_battery", "binary_sensor.visak_solara"];
   }
   _render() {
     if (!this._hass) return;
@@ -667,16 +667,17 @@ class RipacSolarCard extends RipacBase {
       .pb2 { height:4px; border-radius:2px; background:rgba(255,255,255,.1); margin-top:5px; overflow:hidden; } .pb2 i { display:block; height:100%; background:#ffca28; border-radius:2px; }
     </style><ha-card class="sol">
       <div class="top"><div style="flex:1">${this._config.no_title ? `<div class="ttl" style="font-size:15px">${status}</div>` : `<div class="ttl">Solar i baterija</div><div class="sub">${status}</div>`}</div>
-        <div class="pill" data-e="select.ripac_q0048088723771_ripac_output_priority">${esc(mode.trim())}</div>
-        <div class="pill ai ${ai ? "on" : ""}" data-tg="input_boolean.pametno_upravljanje_solarom"><ha-icon icon="mdi:robot"></ha-icon>${ai ? "Auto" : "Ručno"}</div></div>
+        <div class="pill" data-e="select.ripac_q0048088723771_ripac_output_priority" title="Režim invertera">${{ SOL: "☀️ Solar prvo", SBU: "🔋 Solar → baterija → mreža", SUB: "☀️ Solar → mreža → baterija", UTI: "🔌 Mreža prvo" }[mode.trim()] || esc(mode.trim())}</div>
+        <div class="pill ai ${ai ? "on" : ""}" data-tg="input_boolean.pametno_upravljanje_solarom" title="Pametno upravljanje"><ha-icon icon="mdi:robot"></ha-icon>${ai ? "Pametno: uklj." : "Pametno: isklj."}</div></div>
       ${svg}
       <div class="kp">
         <div class="k" data-e="${Q}energy_today"><div class="kl">Solar danas</div><div class="kv">${pvToday.toFixed(1)} <small>kWh</small></div>
           <div class="pb2"><i style="width:${fcToday ? Math.min(100, (pvToday / fcToday) * 100) : 0}%"></i></div><div class="ks">prognoza ${fcToday.toFixed(1)} kWh</div></div>
         <div class="k" data-e="sensor.energy_production_tomorrow"><div class="kl">Sutra</div><div class="kv">${fcTom.toFixed(1)} <small>kWh</small></div>
           <div class="ks">${fcTom >= 10 ? "☀️ dobar dan" : fcTom >= 4 ? "⛅ osrednje" : "☁️ slabo sunca"}</div></div>
-        <div class="k" data-nav="/ripac-odrzavanje/pregled"><div class="kl">Baterija</div><div class="kv">${esc(vnow ?? "–")} <small>V</small></div>
-          <div class="ks">min 24 h ${esc(vmin ?? "–")} V · ${cyc ? parseFloat(cyc).toFixed(1) : "0"} cikl.</div></div>
+        <div class="k" data-nav="/ripac-odrzavanje/pregled"><div class="kl">Baterije</div><div class="kv">${(n("sensor.baterije_energija_bms") || soc / 100 * 6.4).toFixed(1)} <small>/ 6.4 kWh</small></div>
+          <div class="ks">${["sh24100_h_01606", "sh24100_h_01488"].map((b) => this.st(`sensor.${b}_battery`)).filter((x) => x && !isNaN(x)).map((x) => Math.round(x) + "%").join(" · ") || "BMS –"} · ${esc(vnow ?? "–")} V</div>
+          <div class="ks">${(() => { const c = ["sh24100_h_01606", "sh24100_h_01488"].map((b) => parseFloat(this.st(`sensor.${b}_cycles`))).filter((x) => !isNaN(x)); const t = parseFloat(this.st("sensor.baterije_najniza_temperatura")); return `${c.length ? Math.round(c.reduce((a, b) => a + b, 0) / c.length) + " ciklusa" : ""}${!isNaN(t) ? ` · ${t.toFixed(0)} °C` : ""}`; })()}</div></div>
       </div></ha-card>`;
     const root = this.shadowRoot;
     root.querySelectorAll("[data-e]").forEach((el) => el.addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: el.dataset.e }, bubbles: true, composed: true }))));
@@ -834,7 +835,7 @@ window.customCards.push(
     "195 voda na putu": "195 water on road", "205 put plavi": "205 road floods", "sada": "now", "+1 dan": "+1 day", "+2 dana": "+2 days", "+3 dana": "+3 days",
     "Žuto upozorenje": "Yellow warning", "Narandžasto upozorenje": "Orange warning", "Crveno upozorenje": "Red warning",
     // solar
-    "Kuća radi na bateriji": "House is running on battery", "Ručno": "Manual", "miruje": "idle", "kuća": "house", "višak": "surplus",
+    "Kuća radi na bateriji": "House is running on battery", "Ručno": "Manual", "Pametno: uklj.": "Smart: on", "Pametno: isklj.": "Smart: off", "☀️ Solar prvo": "☀️ Solar first", "🔋 Solar → baterija → mreža": "🔋 Solar → battery → grid", "☀️ Solar → mreža → baterija": "☀️ Solar → grid → battery", "🔌 Mreža prvo": "🔌 Grid first", "Baterije": "Batteries", "miruje": "idle", "kuća": "house", "višak": "surplus",
     "jeftina": "cheap", "skupa": "expensive", "mreža": "grid", "Solar danas": "Solar today", "Baterija": "Battery",
     "☀️ dobar dan": "☀️ good day", "⛅ osrednje": "⛅ moderate", "☁️ slabo sunca": "☁️ little sun",
     // internet / sky
@@ -868,7 +869,7 @@ window.customCards.push(
     [/\bsutra\b/g, "tomorrow"], [/\bdanas\b/g, "today"], [/\bu srijedu\b/g, "on Wednesday"], [/\bu četvrtak\b/g, "on Thursday"], [/\bu petak\b/g, "on Friday"],
     [/\bu subotu\b/g, "on Saturday"], [/\bu nedjelju\b/g, "on Sunday"], [/\bu ponedjeljak\b/g, "on Monday"], [/\bu utorak\b/g, "on Tuesday"],
     [/Kuća radi na solaru/g, "House is running on solar"], [/, višak puni bateriju/g, ", surplus charges the battery"], [/Kuća je na mreži/g, "House is on the grid"], [/, solar puni bateriju/g, ", solar charges the battery"],
-    [/^prognoza /, "forecast "], [/ cikl\./g, " cycles"], [/^daje /, "gives "], [/^puni /, "charging "],
+    [/^prognoza /, "forecast "], [/ cikl\./g, " cycles"], [/ ciklusa/g, " cycles"], [/^daje /, "gives "], [/^puni /, "charging "],
     [/(\d+) uređaja/g, "$1 devices"], [/ · AP offline/g, " · AP offline"], [/^čeka /, "standby "], [/^AKTIVNA /, "ACTIVE "], [/4G ovaj mj\./g, "4G this month"], [/(\d+) nova SMS/g, "$1 new SMS"], [/SMS: nema novih/g, "SMS: none new"], [/ ovaj mj\./g, " this month"], [/glavna veza · /g, "main link · "], [/^čeka · /, "standby · "], [/^AKTIVNA · /, "ACTIVE · "],
     [/u vidnom polju/g, "in view"], [/iznad horizonta/g, "above horizon"], [/^(danas|sutra) · za (.+)$/, (m, d, r) => `${d === "danas" ? "today" : "tomorrow"} · in ${r}`],
     [/satelita iznad horizonta, nijedan u vidnom polju tanjira/g, "satellites above horizon, none in the dish's view"],
