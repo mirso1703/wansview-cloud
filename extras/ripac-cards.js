@@ -483,9 +483,88 @@ class RipacCareCard extends RipacBase {
   }
 }
 
+const Q = "sensor.ripac_q0048088723771_ripac_";
+class RipacSolarCard extends RipacBase {
+  _watch() {
+    return [Q + "solar_power", Q + "grid_power", Q + "output_power", Q + "battery_power", Q + "load_percentage", Q + "battery_voltage", Q + "energy_today",
+      "sensor.baterija_soc_stabilno", "select.ripac_q0048088723771_ripac_output_priority", "sensor.tarifa_struje", "input_boolean.pametno_upravljanje_solarom",
+      "sensor.energy_production_today", "sensor.energy_production_tomorrow", "sensor.ciklusi_baterije", "sensor.ripac_q0048088723771_baterija_napon_min_24h", "binary_sensor.visak_solara"];
+  }
+  _render() {
+    if (!this._hass) return;
+    const n = (e) => parseFloat(this.st(e)) || 0;
+    const sol = n(Q + "solar_power"), grid = n(Q + "grid_power"), load = n(Q + "output_power"), bat = n(Q + "battery_power"), soc = n("sensor.baterija_soc_stabilno");
+    const inv = n(Q + "load_percentage");
+    const mode = this.st("select.ripac_q0048088723771_ripac_output_priority") || "";
+    const tar = this.st("sensor.tarifa_struje") || "";
+    const ai = this.st("input_boolean.pametno_upravljanje_solarom") === "on";
+    const visak = this.st("binary_sensor.visak_solara") === "on";
+    const pvToday = n(Q + "energy_today"), fcToday = n("sensor.energy_production_today"), fcTom = n("sensor.energy_production_tomorrow");
+    const W = (v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)} kW` : `${Math.round(v)} W`);
+    const status = grid > 30 ? `Kuća je na mreži${sol > 20 ? ", solar puni bateriju" : ""}` : sol > 20 && sol >= load ? "Kuća radi na solaru" + (bat > 20 ? ", višak puni bateriju" : "") : "Kuća radi na bateriji";
+    // flows: [active, reverse]
+    const f = { sol: sol > 20, grid: grid > 30, load: load > 5, bat: Math.abs(bat) > 20 };
+    const C = { sol: "#ffca28", grid: "#b39ddb", load: "#90caf9", bat: "#69f0ae" };
+    const socCol = soc < 25 ? "#ef5350" : soc < 50 ? "#ffb300" : C.bat;
+    const R = 34, circ = 2 * Math.PI * R;
+    const line = (x1, y1, x2, y2, on, col, rev) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${on ? col : "rgba(255,255,255,.12)"}" stroke-width="${on ? 2.5 : 1.5}" stroke-dasharray="${on ? "4 6" : "2 6"}" stroke-linecap="round">${on ? `<animate attributeName="stroke-dashoffset" values="${rev ? "0;20" : "20;0"}" dur="0.9s" repeatCount="indefinite"/>` : ""}</line>`;
+    const node = (x, y, col, title, val, sub, extra = "") => `<g transform="translate(${x},${y})">
+      <circle r="${R}" fill="rgba(255,255,255,.05)" stroke="${col}" stroke-opacity=".35" stroke-width="2"/>${extra}
+      <text y="-10" text-anchor="middle" font-size="10.5" font-weight="700" fill="${col}">${title}</text>
+      <text y="7" text-anchor="middle" font-size="15" font-weight="800" fill="#fff">${val}</text>
+      ${sub ? `<text y="22" text-anchor="middle" font-size="9.5" fill="rgba(255,255,255,.6)">${sub}</text>` : ""}</g>`;
+    const socArc = `<circle r="${R}" fill="none" stroke="${socCol}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${(soc / 100) * circ} ${circ}" transform="rotate(-90)"/>`;
+    const svg = `<svg viewBox="0 0 320 250" class="flow">
+      ${line(160, 74, 160, 106, f.sol, C.sol)}
+      ${line(74, 125, 126, 125, f.grid, C.grid)}
+      ${line(194, 125, 246, 125, f.load, C.load)}
+      ${line(160, 144, 160, 176, f.bat, C.bat, bat > 0)}
+      ${node(160, 40, C.sol, "Solar", W(sol), visak ? "višak!" : "")}
+      ${node(40, 125, C.grid, "Mreža", W(grid), esc(tar).toLowerCase())}
+      ${node(280, 125, C.load, "Kuća", W(load), "")}
+      <g transform="translate(160,125)"><circle r="20" fill="rgba(255,255,255,.08)" stroke="rgba(255,255,255,.25)"/>
+        <text y="-2" text-anchor="middle" font-size="8.5" fill="rgba(255,255,255,.6)">inverter</text><text y="10" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">${Math.round(inv)}%</text></g>
+      ${node(160, 210, socCol, "Baterija", `${Math.round(soc)} %`, bat > 20 ? `puni ${W(bat)}` : bat < -20 ? `daje ${W(-bat)}` : "miruje", socArc)}
+    </svg>`;
+    const cyc = this.st("sensor.ciklusi_baterije"), vmin = this.st("sensor.ripac_q0048088723771_baterija_napon_min_24h"), vnow = this.st(Q + "battery_voltage");
+    this.shadowRoot.innerHTML = `<style>${css}
+      ha-card.sol { background:radial-gradient(110% 80% at 50% 35%,#24304a,#121826 70%); color:#fff; }
+      .sol .ttl { color:#fff; } .sol .sub { color:#a9b6cf; }
+      .top { display:flex; align-items:center; gap:8px; }
+      .pill { font-size:11.5px; font-weight:700; padding:5px 10px; border-radius:10px; background:rgba(255,255,255,.08); color:#e8eefc; cursor:pointer; white-space:nowrap; }
+      .pill.ai { display:flex; align-items:center; gap:4px; } .pill.ai.on { background:rgba(105,240,174,.18); color:#69f0ae; }
+      .pill ha-icon { --mdc-icon-size:15px; }
+      .flow { width:100%; max-width:420px; display:block; margin:4px auto 0; }
+      .kp { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:8px; }
+      .k { padding:9px; border-radius:12px; background:rgba(255,255,255,.06); cursor:pointer; }
+      .kl { font-size:10.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; color:#a9b6cf; }
+      .kv { font-size:16px; font-weight:800; margin-top:2px; } .kv small { font-size:11px; font-weight:600; color:#a9b6cf; }
+      .ks { font-size:11px; color:#a9b6cf; margin-top:1px; }
+      .pb2 { height:4px; border-radius:2px; background:rgba(255,255,255,.1); margin-top:5px; overflow:hidden; } .pb2 i { display:block; height:100%; background:#ffca28; border-radius:2px; }
+    </style><ha-card class="sol">
+      <div class="top"><div style="flex:1"><div class="ttl">Solar i baterija</div><div class="sub">${status}</div></div>
+        <div class="pill" data-e="select.ripac_q0048088723771_ripac_output_priority">${esc(mode.trim())}</div>
+        <div class="pill ai ${ai ? "on" : ""}" data-tg="input_boolean.pametno_upravljanje_solarom"><ha-icon icon="mdi:robot"></ha-icon>${ai ? "Auto" : "Ručno"}</div></div>
+      ${svg}
+      <div class="kp">
+        <div class="k" data-e="${Q}energy_today"><div class="kl">Solar danas</div><div class="kv">${pvToday.toFixed(1)} <small>kWh</small></div>
+          <div class="pb2"><i style="width:${fcToday ? Math.min(100, (pvToday / fcToday) * 100) : 0}%"></i></div><div class="ks">prognoza ${fcToday.toFixed(1)} kWh</div></div>
+        <div class="k" data-e="sensor.energy_production_tomorrow"><div class="kl">Sutra</div><div class="kv">${fcTom.toFixed(1)} <small>kWh</small></div>
+          <div class="ks">${fcTom >= 10 ? "☀️ dobar dan" : fcTom >= 4 ? "⛅ osrednje" : "☁️ slabo sunca"}</div></div>
+        <div class="k" data-nav="/ripac-odrzavanje/pregled"><div class="kl">Baterija</div><div class="kv">${esc(vnow ?? "–")} <small>V</small></div>
+          <div class="ks">min 24 h ${esc(vmin ?? "–")} V · ${cyc ? parseFloat(cyc).toFixed(1) : "0"} cikl.</div></div>
+      </div></ha-card>`;
+    const root = this.shadowRoot;
+    root.querySelectorAll("[data-e]").forEach((el) => el.addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: el.dataset.e }, bubbles: true, composed: true }))));
+    root.querySelectorAll("[data-tg]").forEach((el) => el.addEventListener("click", () => this._hass.callService("homeassistant", "toggle", { entity_id: el.dataset.tg })));
+    root.querySelectorAll("[data-nav]").forEach((el) => el.addEventListener("click", () => { history.pushState(null, "", el.dataset.nav); window.dispatchEvent(new CustomEvent("location-changed")); }));
+  }
+}
+
 if (!customElements.get("ripac-security-card")) customElements.define("ripac-security-card", RipacSecurityCard);
 if (!customElements.get("ripac-una-card")) customElements.define("ripac-una-card", RipacUnaCard);
 if (!customElements.get("ripac-net-card")) customElements.define("ripac-net-card", RipacNetCard);
+if (!customElements.get("ripac-solar-card")) customElements.define("ripac-solar-card", RipacSolarCard);
 if (!customElements.get("ripac-care-card")) customElements.define("ripac-care-card", RipacCareCard);
 window.customCards = window.customCards || [];
 window.customCards.push(
