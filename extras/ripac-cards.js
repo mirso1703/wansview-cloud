@@ -192,15 +192,23 @@ const UPSTREAM = [
 const EV_GEN = { Vjetar: "vjetar", Kiša: "kiša", Poplava: "poplava", Grmljavina: "grmljavina", Snijeg: "snijeg", Poledica: "poledica", Magla: "magla", Vrućina: "vrućina", Hladnoća: "hladnoća" };
 const EV_ICON = { Vjetar: "mdi:weather-windy", Kiša: "mdi:weather-pouring", Poplava: "mdi:home-flood", Grmljavina: "mdi:weather-lightning", Snijeg: "mdi:weather-snowy-heavy", Poledica: "mdi:snowflake-alert", Magla: "mdi:weather-fog", Vrućina: "mdi:thermometer-high", Hladnoća: "mdi:thermometer-low" };
 
+const WX_ICON = { "clear-night": "mdi:weather-night", cloudy: "mdi:weather-cloudy", fog: "mdi:weather-fog", hail: "mdi:weather-hail", lightning: "mdi:weather-lightning",
+  "lightning-rainy": "mdi:weather-lightning-rainy", partlycloudy: "mdi:weather-partly-cloudy", pouring: "mdi:weather-pouring", rainy: "mdi:weather-rainy",
+  snowy: "mdi:weather-snowy", "snowy-rainy": "mdi:weather-snowy-rainy", sunny: "mdi:weather-sunny", windy: "mdi:weather-windy", exceptional: "mdi:alert" };
+const WX_COL = { sunny: "#ffca28", "clear-night": "#9fa8da", partlycloudy: "#ffd54f", cloudy: "#b0bec5", rainy: "#64b5f6", pouring: "#42a5f5", "lightning-rainy": "#ab47bc",
+  lightning: "#ab47bc", snowy: "#e3f2fd", "snowy-rainy": "#90caf9", fog: "#b0bec5", hail: "#80deea", windy: "#80cbc4" };
+const DAYS = ["ned", "pon", "uto", "sri", "čet", "pet", "sub"];
+
 class RipacUnaCard extends RipacBase {
   _watch() {
-    return [UNA, "sensor.hs_ripac", "sensor.una_prognoza", "input_number.kisa_prognoza_24h", "sensor.meteoalarm_bih_nivo_upozorenja", ...UPSTREAM.flat()];
+    return [UNA, "sensor.hs_ripac", "sensor.una_prognoza", "input_number.kisa_prognoza_24h", "sensor.meteoalarm_bih_nivo_upozorenja", "weather.home", ...UPSTREAM.flat()];
   }
   set hass(h) {
     super.hass = h;
     if (!this._histT || Date.now() - this._histT > 600000) {
       this._histT = Date.now();
       this._loadHist();
+      this._loadWx();
     }
   }
   async _loadHist() {
@@ -211,22 +219,58 @@ class RipacUnaCard extends RipacBase {
       this._render();
     } catch (e) {}
   }
+  async _loadWx() {
+    try {
+      const r = await this._hass.callWS({ type: "call_service", domain: "weather", service: "get_forecasts", service_data: { type: "daily" }, target: { entity_id: "weather.home" }, return_response: true });
+      this._wx = r.response["weather.home"].forecast || [];
+      this._render();
+    } catch (e) {}
+  }
   _spark(c) {
     const pts = this._hist || [];
     if (pts.length < 2) return "";
     const t0 = Date.now() - 48 * 3600 * 1000;
     const vals = pts.map((p) => p[1]);
-    let lo = Math.min(...vals, 140), hi = Math.max(...vals, 200);
-    const W = 300, H = 70;
+    const lo = Math.min(...vals, 140), hi = Math.max(...vals, 200);
+    const W = 300, H = 64;
     const x = (t) => ((Math.max(t, t0) - t0) / (48 * 3600 * 1000)) * W;
     const y = (v) => H - 4 - ((v - lo) / (hi - lo)) * (H - 8);
     const line = pts.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("") + `L${W},${y(vals[vals.length - 1]).toFixed(1)}`;
-    const ref = (v, col, lab) => (v > lo && v < hi ? `<line x1="0" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-dasharray="3 4" stroke-width="1" opacity=".7"/><text x="${W - 2}" y="${y(v) - 3}" text-anchor="end" font-size="9" fill="${col}">${lab}</text>` : "");
+    const ref = (v, col, lab) => (v > lo && v < hi ? `<line x1="0" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-dasharray="3 4" stroke-width="1" opacity=".7" vector-effect="non-scaling-stroke"/>` +
+      `<text x="${W - 2}" y="${y(v) - 3}" text-anchor="end" font-size="9" fill="${col}">${lab}</text>` : "");
     return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
       <defs><linearGradient id="ug" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".45"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs>
       ${ref(180, "#ffb300", "put 180")}${ref(200, "#e53935", "poplava 200")}
       <path d="${line}L${W},${H}L0,${H}Z" fill="url(#ug)"/><path d="${line}" fill="none" stroke="${c}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
       <div class="axis"><span>prije 48 h</span><span>24 h</span><span>sada</span></div>`;
+  }
+  // rough expectation for the next 2-3 days from forecast rain, current trend and upstream stations
+  _expect(l, tr, wx, prog) {
+    const rain2 = wx.slice(0, 2).reduce((a, d) => a + (d.precipitation || 0), 0);
+    const rain3 = wx.slice(0, 3).reduce((a, d) => a + (d.precipitation || 0), 0);
+    const up = UPSTREAM.map(([e, r, n]) => [n, parseFloat(this.st(r)) || 0]);
+    const wave = up.filter(([, d]) => d >= 15);
+    const snow = wx.slice(0, 3).some((d) => /snow/.test(d.condition));
+    let rise, txt, col = "#43a047", icon = "mdi:check-circle";
+    if (wave.length) {
+      rise = 40;
+      txt = `Uzvodno brzo raste (${wave.map(([n, d]) => `${n} +${Math.round(d)} cm`).join(", ")}) – val stiže do Ripča za 4–9 h.`;
+    } else if (rain2 >= 60) rise = 60;
+    else if (rain2 >= 30) rise = 35;
+    else if (rain3 >= 15) rise = 15;
+    else rise = 0;
+    if (tr >= 1 && rise < 15) rise = 15;
+    const peak = Math.round(l + rise);
+    if (!txt) {
+      if (rise === 0) txt = tr <= -1 ? `Una opada i nema značajne kiše – put ostaje prohodan.` : `Nema značajne kiše (${Math.round(rain3)} mm u 3 dana) – Una ostaje mirna oko ${Math.round(l)} cm.`;
+      else txt = `Kiša ${Math.round(rain2 >= 15 ? rain2 : rain3)} mm u ${rain2 >= 15 ? "2" : "3"} dana – Una bi mogla porasti za ~${rise} cm, do oko <b>${peak} cm</b>.`;
+    }
+    if (peak >= 200) { col = "#e53935"; icon = "mdi:home-flood"; txt += " <b>Put bi mogao biti poplavljen.</b>"; }
+    else if (peak >= 180) { col = "#ffb300"; icon = "mdi:alert"; txt += " Voda bi mogla izaći na put."; }
+    else if (rise) { col = "#42a5f5"; icon = "mdi:trending-up"; txt += " Put ostaje prohodan."; }
+    if (snow && rise) txt += " Dio padavina je snijeg, pa porast može kasniti.";
+    if (prog.startsWith("raste")) { col = "#42a5f5"; icon = "mdi:trending-up"; }
+    return { txt, col, icon };
   }
   _render() {
     if (!this._hass) return;
@@ -236,56 +280,72 @@ class RipacUnaCard extends RipacBase {
     const c = st ? st[0] : "#888";
     const trend = tr >= 1 ? `raste ${tr.toFixed(1)} cm/h` : tr <= -1 ? `opada ${Math.abs(tr).toFixed(1)} cm/h` : "miruje";
     const prog = this.st("sensor.una_prognoza") || "";
-    const rain = parseFloat(this.st("input_number.kisa_prognoza_24h")) || 0;
     const warns = this.attr("sensor.meteoalarm_bih_nivo_upozorenja", "warnings") || [];
+    const wx = (this._wx || []).filter((d) => new Date(d.datetime).toDateString() === new Date().toDateString() || new Date(d.datetime) > new Date()).slice(0, 4);
     const wcol = { 2: "#fbc02d", 3: "#fb8c00", 4: "#e53935" };
-    const when = (w) => {
-      if (w.active) return "sada";
-      const d = new Date(w.onset);
-      const tom = new Date();
-      tom.setDate(tom.getDate() + 1);
-      const hm = d.toLocaleTimeString("bs-BA", { hour: "2-digit", minute: "2-digit" });
-      return d.toDateString() === new Date().toDateString() ? `od ${hm}` : d.toDateString() === tom.toDateString() ? `sutra od ${hm}` : `od ${d.getDate()}.${d.getMonth() + 1}. ${hm}`;
+    const hm = (s) => new Date(s).toLocaleTimeString("bs-BA", { hour: "2-digit", minute: "2-digit" });
+    const dayName = (d) => {
+      const t = new Date(); const tm = new Date(); tm.setDate(t.getDate() + 1);
+      return d.toDateString() === t.toDateString() ? "Danas" : d.toDateString() === tm.toDateString() ? "Sutra" : DAYS[d.getDay()];
     };
-    const wrows = warns
-      .map((w) => `<div class="wr" style="--c:${wcol[w.level]}"><ha-icon icon="${EV_ICON[w.event_hr] || "mdi:alert"}"></ha-icon>
-        <span><b>${esc(w.level_name)} upozorenje</b> · ${esc(EV_GEN[w.event_hr] || w.event_hr)} ${when(w)}${w.expires ? ` do ${new Date(w.expires).toLocaleTimeString("bs-BA", { hour: "2-digit", minute: "2-digit" })}` : ""}</span></div>`)
-      .join("");
-    const rising = prog.startsWith("raste");
-    const fcText = rising
-      ? `<b>${esc(prog)}</b>`
-      : rain >= 15
-      ? `Najavljeno <b>${Math.round(rain)} mm</b> kiše u 24 h – Una bi mogla porasti`
-      : `Una ${esc(prog.split("·")[0].trim() || "stabilna")}${rain ? ` · kiša u 24 h: ${Math.round(rain)} mm` : " · bez kiše u 24 h"}`;
-    const fcIcon = rising || rain >= 15 ? "mdi:weather-pouring" : "mdi:weather-cloudy-clock";
-    const fcCol = rising ? "#42a5f5" : rain >= 15 ? "#64b5f6" : "var(--secondary-text-color)";
-    const ups = UPSTREAM.filter(([e]) => this._hass.states[e])
-      .map(([e, r, n]) => {
-        const v = parseFloat(this.st(e));
-        const d = parseFloat(this.st(r)) || 0;
-        const col = d >= 15 ? "#e53935" : d >= 5 ? "#ffb300" : d <= -3 ? "#42a5f5" : "var(--secondary-text-color)";
-        return `<div class="us"><div class="un">${n}</div><div class="uv">${isNaN(v) ? "–" : Math.round(v)} <span class="unit" style="font-size:11px">cm</span></div>
-          <div class="ud" style="color:${col}">${Math.round(d) > 0 ? "+" : ""}${Math.round(d) || 0} cm / 3 h</div></div>`;
-      })
-      .join("");
-    this.shadowRoot.innerHTML = `<style>${css}</style><ha-card>
+    const when = (w) => {
+      if (w.active) return `sada${w.expires ? ` do ${hm(w.expires)}` : ""}`;
+      return `${dayName(new Date(w.onset)).toLowerCase()} ${hm(w.onset)}${w.expires ? `–${hm(w.expires)}` : ""}`;
+    };
+    const warnFor = (d) => {
+      const s = new Date(d); s.setHours(0, 0, 0, 0);
+      const e = new Date(s); e.setDate(e.getDate() + 1);
+      return warns.filter((w) => new Date(w.onset || Date.now()) < e && new Date(w.expires || Date.now() + 864e5) > s).sort((a, b) => b.level - a.level)[0];
+    };
+    const days = wx.map((d) => {
+      const dt = new Date(d.datetime);
+      const w = warnFor(dt);
+      return `<div class="wd ${w ? "warn" : ""}" style="${w ? `--c:${wcol[w.level]}` : ""}">
+        <div class="wdn">${dayName(dt)}</div>
+        <ha-icon icon="${WX_ICON[d.condition] || "mdi:weather-cloudy"}" style="color:${WX_COL[d.condition] || "#b0bec5"}"></ha-icon>
+        <div class="wdt"><b>${Math.round(d.temperature)}°</b> <span>${d.templow != null ? Math.round(d.templow) + "°" : ""}</span></div>
+        <div class="wdr">${d.precipitation ? `💧 ${Math.round(d.precipitation)} mm` : "suho"}</div>
+        ${w ? `<div class="wdw"><ha-icon icon="${EV_ICON[w.event_hr] || "mdi:alert"}"></ha-icon></div>` : ""}</div>`;
+    }).join("");
+    const wrows = warns.map((w) => `<div class="wr" style="--c:${wcol[w.level]}"><ha-icon icon="${EV_ICON[w.event_hr] || "mdi:alert"}"></ha-icon>
+        <span><b>${esc(w.level_name)} upozorenje</b> · ${esc(EV_GEN[w.event_hr] || w.event_hr)}, ${when(w)}</span></div>`).join("");
+    const ex = isNaN(l) ? null : this._expect(l, tr, wx, prog);
+    const ups = UPSTREAM.filter(([e]) => this._hass.states[e]).map(([e, r, n]) => {
+      const v = parseFloat(this.st(e));
+      const d = Math.round(parseFloat(this.st(r)) || 0);
+      const col = d >= 15 ? "#e53935" : d >= 5 ? "#ffb300" : d <= -3 ? "#42a5f5" : "var(--secondary-text-color)";
+      return `<div class="us"><div class="un">${n}</div><div class="uv">${isNaN(v) ? "–" : Math.round(v)} <span class="unit" style="font-size:11px">cm</span></div>
+        <div class="ud" style="color:${col}">${d > 0 ? "+" : ""}${d} cm / 3 h</div></div>`;
+    }).join("");
+    this.shadowRoot.innerHTML = `<style>${css}
+      .wk { display:grid; grid-template-columns:repeat(${Math.max(wx.length, 1)},1fr); gap:6px; }
+      .wd { position:relative; text-align:center; padding:8px 4px; border-radius:12px; background:rgba(127,127,127,.08); border:1px solid transparent; }
+      .wd.warn { border-color:color-mix(in srgb,var(--c) 60%,transparent); background:color-mix(in srgb,var(--c) 10%,transparent); }
+      .wdn { font-size:11.5px; font-weight:700; color:var(--secondary-text-color); text-transform:capitalize; }
+      .wd > ha-icon { --mdc-icon-size:26px; margin:4px 0 2px; }
+      .wdt b { font-size:15px; color:var(--primary-text-color); } .wdt span { font-size:12px; color:var(--secondary-text-color); }
+      .wdr { font-size:10.5px; color:var(--secondary-text-color); margin-top:2px; }
+      .wdw { position:absolute; top:4px; right:4px; width:18px; height:18px; border-radius:50%; background:var(--c); display:flex; align-items:center; justify-content:center; }
+      .wdw ha-icon { --mdc-icon-size:12px; color:#000; }
+      .exp { display:flex; gap:10px; align-items:flex-start; margin-top:10px; padding:10px 12px; border-radius:12px;
+        background:color-mix(in srgb,var(--c) 12%,transparent); border-left:3px solid var(--c); font-size:13px; line-height:1.4; color:var(--primary-text-color); }
+      .exp ha-icon { color:var(--c); --mdc-icon-size:20px; flex:none; margin-top:1px; }
+      .exp small { display:block; font-size:10.5px; color:var(--secondary-text-color); margin-top:3px; }
+    </style><ha-card>
       <div class="hd" style="margin-bottom:4px"><div class="shield" style="--c:${c}"><ha-icon icon="mdi:waves"></ha-icon></div>
         <div style="flex:1"><div class="ttl">Una kod Ripča</div><div class="sub">${st ? `${st[2]} · ${trend}` : "nema podataka"}</div></div>
         ${st ? `<div class="badge" style="--c:${c}">${st[1]}</div>` : ""}</div>
-      <div class="big"><span class="lvl">${isNaN(l) ? "–" : l.toFixed(1)}</span><span class="unit">cm</span>
-        ${st && l < 180 ? `<span class="sub" style="margin-left:8px">još ${Math.round(180 - l)} cm do puta</span>` : ""}</div>
+      <div class="big"><span class="lvl">${isNaN(l) ? "–" : l.toFixed(1)}</span><span class="unit">cm</span></div>
       ${this._spark(c)}
-      <div class="fc2"><div class="lbl" style="margin:0 0 6px">Prognoza i upozorenja</div>
-        <div class="wr" style="--c:${fcCol}"><ha-icon icon="${fcIcon}"></ha-icon><span>${fcText}</span></div>${wrows}</div>
+      ${ex ? `<div class="lbl">Šta očekivati</div><div class="exp" style="--c:${ex.col}"><ha-icon icon="${ex.icon}"></ha-icon><div>${ex.txt}<small>Procjena iz prognoze kiše i uzvodnih stanica</small></div></div>` : ""}
+      ${wx.length ? `<div class="lbl">Vrijeme</div><div class="wk">${days}</div>` : ""}
+      ${wrows ? `<div class="fc2" style="margin-top:8px">${wrows}</div>` : ""}
       ${ups ? `<div class="lbl">Uzvodno</div><div class="up">${ups}</div>` : ""}
     </ha-card>`;
-    this.shadowRoot.querySelector("ha-card").addEventListener("click", (ev) => {
-      if (ev.target.closest(".chip")) return;
-      this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: UNA }, bubbles: true, composed: true }));
-    });
+    this.shadowRoot.querySelector(".big").addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: UNA }, bubbles: true, composed: true })));
+    this.shadowRoot.querySelector(".wk")?.addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: "weather.home" }, bubbles: true, composed: true })));
   }
 }
-
 
 const R = "sensor.vikendica_router_";
 class RipacNetCard extends RipacBase {
