@@ -1110,7 +1110,7 @@ class RipacOsobeCard extends HTMLElement {
       const src = onWifi ? `na WiFi-ju · ${onWifi.attributes.ip || ""}` : ps && ps.state === "home" ? "po GPS-u" : "";
       return `<div class="p ${home ? "home" : ""}" data-id="${p.id}" data-name="${vEsc(p.name)}">
         <div class="av">${vEsc(p.name.slice(0, 1).toUpperCase())}</div>
-        <div class="nm"><b>${vEsc(p.name)}</b><span>${home ? `🟢 u vikendici · ${vEsc(src)}` : "⚪ nije tu"}</span></div>
+        <div class="nm"><b>${vEsc(p.name)}</b><span>${home ? `🟢 u vikendici · ${vEsc(src)}` : "⚪ nije tu"}</span>${mac ? `<span class="mac">MAC ${vEsc(mac)}</span>` : ""}</div>
         <div class="ipw">${this._manual && this._manual === p.id
           ? `<input class="ip" value="${vEsc(mac)}" placeholder="AA:BB:CC:DD:EE:FF" autocapitalize="characters">`
           : `<select class="ips">${this._opts(mac, phones, macs)}</select>`}</div>
@@ -1126,7 +1126,7 @@ class RipacOsobeCard extends HTMLElement {
       .p:first-of-type { border-top:0; }
       .av { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; background:rgba(127,127,127,.2); }
       .p.home .av { background:#4caf50; color:#fff; }
-      .nm { display:flex; flex-direction:column; min-width:0; } .nm b { font-size:14px; } .nm span { font-size:11.5px; color:var(--secondary-text-color); }
+      .nm { display:flex; flex-direction:column; min-width:0; } .nm b { font-size:14px; } .nm span { font-size:11.5px; color:var(--secondary-text-color); } .nm .mac { font-family:ui-monospace,Menlo,monospace; font-size:10.5px; opacity:.8; }
       select, input { font-size:13px; color:var(--primary-text-color); background:rgba(127,127,127,.12); border:1px solid transparent; border-radius:9px; padding:7px 8px; min-width:0; width:100%; box-sizing:border-box; font-family:ui-monospace,Menlo,monospace; }
       input:focus, select:focus { border-color:var(--primary-color); outline:none; } select { appearance:auto; font-family:inherit; } .ipw { min-width:0; }
       .add input { font-family:inherit; }
