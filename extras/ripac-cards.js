@@ -243,49 +243,101 @@ class RipacUnaCard extends RipacBase {
       this._render();
     } catch (e) {}
   }
-  _spark(c) {
+  // simple river model: rain of a day lifts the Una partly the same day, mostly the next; without rain it recedes at the recent rate
+  _predict(l, wx) {
+    const pts = this._hist || [];
+    let decay = -4;
+    if (pts.length > 2) {
+      const dayAgo = Date.now() - 24 * 3600 * 1000;
+      const old = pts.reduce((a, p) => (Math.abs(p[0] - dayAgo) < Math.abs(a[0] - dayAgo) ? p : a), pts[0]);
+      const d = l - old[1];
+      decay = Math.max(-10, Math.min(0, d < 0 ? d : -2));
+    }
+    const rise = (p) => (p < 5 ? 0 : p < 15 ? 0.4 * p : p < 30 ? 0.7 * p : 1.0 * p);
+    const days = wx.slice(0, 3).map((d) => d.precipitation || 0);
+    const out = [[Date.now(), l]];
+    let lvl = l, carry = 0;
+    for (let i = 0; i < 3; i++) {
+      const r = rise(days[i] || 0);
+      const gain = carry + r * 0.5;
+      carry = r * 0.5;
+      lvl = Math.max(80, lvl + (gain > 0 ? gain : decay));
+      out.push([Date.now() + (i + 1) * 24 * 3600 * 1000, lvl]);
+    }
+    const peak = out.reduce((a, p) => (p[1] > a[1] ? p : a), out[0]);
+    return { pts: out, peak, days };
+  }
+  _spark(c, pred) {
     const pts = this._hist || [];
     if (pts.length < 2) return "";
-    const t0 = Date.now() - 48 * 3600 * 1000;
-    const vals = pts.map((p) => p[1]);
-    const lo = Math.min(...vals, 140), hi = Math.max(...vals, 200);
-    const W = 300, H = 64;
-    const x = (t) => ((Math.max(t, t0) - t0) / (48 * 3600 * 1000)) * W;
-    const y = (v) => H - 4 - ((v - lo) / (hi - lo)) * (H - 8);
-    const line = pts.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("") + `L${W},${y(vals[vals.length - 1]).toFixed(1)}`;
-    const ref = (v, col, lab) => (v > lo && v < hi ? `<line x1="0" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-dasharray="3 4" stroke-width="1" opacity=".7" vector-effect="non-scaling-stroke"/>` +
-      `<text x="${W - 2}" y="${y(v) - 3}" text-anchor="end" font-size="9" fill="${col}">${lab}</text>` : "");
-    return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-      <defs><linearGradient id="ug" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".45"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs>
-      ${ref(180, "#ffb300", "put 180")}${ref(200, "#e53935", "poplava 200")}
-      <path d="${line}L${W},${H}L0,${H}Z" fill="url(#ug)"/><path d="${line}" fill="none" stroke="${c}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
-      <div class="axis"><span>prije 48 h</span><span>24 h</span><span>sada</span></div>`;
+    const H0 = 48, H1 = 72, span = (H0 + H1) * 3600 * 1000;
+    const t0 = Date.now() - H0 * 3600 * 1000;
+    const fut = pred ? pred.pts : [];
+    const vals = pts.map((p) => p[1]).concat(fut.map((p) => p[1]));
+    const lo = Math.floor((Math.min(...vals) - 10) / 10) * 10, hi = Math.max(Math.ceil((Math.max(...vals) + 10) / 10) * 10, 190);
+    const W = 320, H = 120, top = 8, bot = 22, left = 28;
+    const x = (t) => left + ((t - t0) / span) * (W - left);
+    const y = (v) => top + (1 - (v - lo) / (hi - lo)) * (H - top - bot);
+    const nowX = x(Date.now());
+    const past = pts.filter((p) => p[0] >= t0).map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("") + `L${nowX.toFixed(1)},${y(pts[pts.length - 1][1]).toFixed(1)}`;
+    const futLine = fut.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("");
+    const base = H - bot;
+    const grid = [];
+    for (let v = lo; v <= hi; v += (hi - lo) > 80 ? 20 : 10)
+      grid.push(`<line x1="${left}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(127,127,127,.12)"/><text x="${left - 4}" y="${y(v) + 3}" text-anchor="end" font-size="8.5" fill="var(--secondary-text-color)">${v}</text>`);
+    const thr = (v, col, lab) => v >= lo && v <= hi ? `<line x1="${left}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-width="1" stroke-dasharray="4 3" opacity=".8"/>
+      <rect x="${left + 4}" y="${y(v) - 7}" rx="3" width="${lab.length * 4.6 + 8}" height="12" fill="${col}"/><text x="${left + 8}" y="${y(v) + 2}" font-size="8" font-weight="700" fill="#111">${lab}</text>` : "";
+    // rain bars for coming days
+    const bars = pred ? pred.days.map((mm, i) => {
+      if (!mm) return "";
+      const bx = x(Date.now() + (i + 0.5) * 24 * 3600 * 1000), bh = Math.min(28, mm * 1.2);
+      return `<rect x="${bx - 7}" y="${base - bh}" width="14" height="${bh}" rx="2" fill="#42a5f5" opacity=".35"/><text x="${bx}" y="${base - bh - 2}" text-anchor="middle" font-size="7.5" fill="#64b5f6">${Math.round(mm)} mm</text>`;
+    }).join("") : "";
+    const pk = pred && pred.peak[0] > Date.now() + 3600e3 && pred.peak[1] - fut[0][1] >= 3 ? pred.peak : null;
+    const pkCol = pk ? (pk[1] >= 200 ? "#e53935" : pk[1] >= 180 ? "#ffb300" : "#64b5f6") : "";
+    const xl = [[-48, "-48 h"], [-24, "-24 h"], [0, "sada"], [24, "+1 dan"], [48, "+2 dana"], [72, "+3 dana"]]
+      .map(([hh, t]) => `<text x="${x(Date.now() + hh * 3600e3)}" y="${H - 6}" text-anchor="${hh === -48 ? "start" : hh === 72 ? "end" : "middle"}" font-size="8.5" fill="${hh === 0 ? "var(--primary-text-color)" : "var(--secondary-text-color)"}" font-weight="${hh === 0 ? 700 : 400}">${t}</text>`).join("");
+    return `<svg class="spark" viewBox="0 0 ${W} ${H}" style="height:150px">
+      <defs><linearGradient id="ug" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".4"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient>
+        <linearGradient id="fg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#64b5f6" stop-opacity=".22"/><stop offset="1" stop-color="#64b5f6" stop-opacity="0"/></linearGradient></defs>
+      ${grid.join("")}
+      <rect x="${nowX}" y="${top}" width="${W - nowX}" height="${base - top}" fill="rgba(127,127,127,.06)"/>
+      ${bars}
+      ${thr(180, "#ffb300", "put 180")}${thr(200, "#e53935", "poplava 200")}
+      <path d="${past}L${nowX},${base}L${x(pts.find((p) => p[0] >= t0)?.[0] ?? t0)},${base}Z" fill="url(#ug)"/>
+      <path d="${past}" fill="none" stroke="${c}" stroke-width="2.2" stroke-linejoin="round"/>
+      ${futLine ? `<path d="${futLine}L${x(fut[fut.length - 1][0])},${base}L${nowX},${base}Z" fill="url(#fg)"/><path d="${futLine}" fill="none" stroke="#64b5f6" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ""}
+      <line x1="${nowX}" x2="${nowX}" y1="${top}" y2="${base}" stroke="var(--primary-text-color)" stroke-opacity=".35"/>
+      <circle cx="${nowX}" cy="${y(pts[pts.length - 1][1])}" r="4" fill="${c}" stroke="#fff" stroke-width="1.5"/>
+      ${pk ? `<circle cx="${x(pk[0])}" cy="${y(pk[1])}" r="3.5" fill="${pkCol}"/><rect x="${x(pk[0]) - 22}" y="${y(pk[1]) - 19}" width="44" height="13" rx="6" fill="${pkCol}"/>
+        <text x="${x(pk[0])}" y="${y(pk[1]) - 10}" text-anchor="middle" font-size="8.5" font-weight="800" fill="#111">~${Math.round(pk[1])} cm</text>` : ""}
+      ${xl}
+    </svg>
+    <div class="legend2"><span><i style="background:${c}"></i>izmjereno</span><span><i class="d"></i>procjena po prognozi kiše</span><span><i style="background:#42a5f5;opacity:.5"></i>kiša</span></div>`;
   }
   // rough expectation for the next 2-3 days from forecast rain, current trend and upstream stations
-  _expect(l, tr, wx, prog) {
-    const rain2 = wx.slice(0, 2).reduce((a, d) => a + (d.precipitation || 0), 0);
-    const rain3 = wx.slice(0, 3).reduce((a, d) => a + (d.precipitation || 0), 0);
+  _expect(l, tr, wx, prog, pred) {
     const up = UPSTREAM.map(([e, r, n]) => [n, parseFloat(this.st(r)) || 0]);
     const wave = up.filter(([, d]) => d >= 15);
-    const snow = wx.slice(0, 3).some((d) => /snow/.test(d.condition));
-    let rise, txt, col = "#43a047", icon = "mdi:check-circle";
+    const rain3 = pred.days.reduce((a, b) => a + b, 0);
+    const peak = Math.round(pred.peak[1]);
+    const end = Math.round(pred.pts[pred.pts.length - 1][1]);
+    const pkDay = pred.peak[0] > Date.now() + 3600e3 ? ["", "sutra", "prekosutra", "za 3 dana"][Math.round((pred.peak[0] - Date.now()) / 864e5)] || "" : "";
+    let txt, col = "#43a047", icon = "mdi:check-circle";
     if (wave.length) {
-      rise = 40;
       txt = `Uzvodno brzo raste (${wave.map(([n, d]) => `${n} +${Math.round(d)} cm`).join(", ")}) – val stiže do Ripča za 4–9 h.`;
-    } else if (rain2 >= 60) rise = 60;
-    else if (rain2 >= 30) rise = 35;
-    else if (rain3 >= 15) rise = 15;
-    else rise = 0;
-    if (tr >= 1 && rise < 15) rise = 15;
-    const peak = Math.round(l + rise);
-    if (!txt) {
-      if (rise === 0) txt = tr <= -1 ? `Una opada i nema značajne kiše – put ostaje prohodan.` : `Nema značajne kiše (${Math.round(rain3)} mm u 3 dana) – Una ostaje mirna oko ${Math.round(l)} cm.`;
-      else txt = `Kiša ${Math.round(rain2 >= 15 ? rain2 : rain3)} mm u ${rain2 >= 15 ? "2" : "3"} dana – Una bi mogla porasti za ~${rise} cm, do oko <b>${peak} cm</b>.`;
+      col = "#ffb300"; icon = "mdi:waves-arrow-up";
+    } else if (peak - l >= 3) {
+      txt = `Kiša ${Math.round(rain3)} mm u 3 dana – Una bi mogla porasti do oko <b>${peak} cm</b>${pkDay ? ` (${pkDay})` : ""}.`;
+      col = "#42a5f5"; icon = "mdi:trending-up";
+    } else {
+      txt = end < l - 2 ? `Bez značajne kiše (${Math.round(rain3)} mm u 3 dana) – Una polako opada, oko <b>${end} cm</b> za 3 dana.` : `Bez značajne kiše – Una ostaje mirna oko <b>${Math.round(l)} cm</b>.`;
     }
-    if (peak >= 200) { col = "#e53935"; icon = "mdi:home-flood"; txt += " <b>Put bi mogao biti poplavljen.</b>"; }
-    else if (peak >= 180) { col = "#ffb300"; icon = "mdi:alert"; txt += " Voda bi mogla izaći na put."; }
-    else if (rise) { col = "#42a5f5"; icon = "mdi:trending-up"; txt += " Put ostaje prohodan."; }
-    if (snow && rise) txt += " Dio padavina je snijeg, pa porast može kasniti.";
+    const top = Math.max(peak, l);
+    if (top >= 200) { col = "#e53935"; icon = "mdi:home-flood"; txt += " <b>Put bi mogao biti poplavljen.</b>"; }
+    else if (top >= 180) { col = "#ffb300"; icon = "mdi:alert"; txt += " Voda bi mogla izaći na put."; }
+    else txt += " Put ostaje prohodan.";
+    if (wx.slice(0, 3).some((d) => /snow/.test(d.condition)) && peak > l) txt += " Dio padavina je snijeg, pa porast može kasniti.";
     if (prog.startsWith("raste")) { col = "#42a5f5"; icon = "mdi:trending-up"; }
     return { txt, col, icon };
   }
@@ -326,7 +378,8 @@ class RipacUnaCard extends RipacBase {
     }).join("");
     const wrows = warns.map((w) => `<div class="wr" style="--c:${wcol[w.level]}"><ha-icon icon="${EV_ICON[w.event_hr] || "mdi:alert"}"></ha-icon>
         <span><b>${esc(w.level_name)} upozorenje</b> · ${esc(EV_GEN[w.event_hr] || w.event_hr)}, ${when(w)}</span></div>`).join("");
-    const ex = isNaN(l) ? null : this._expect(l, tr, wx, prog);
+    const pred = isNaN(l) ? null : this._predict(l, wx);
+    const ex = isNaN(l) ? null : this._expect(l, tr, wx, prog, pred);
     const ups = UPSTREAM.filter(([e]) => this._hass.states[e]).map(([e, r, n]) => {
       const v = parseFloat(this.st(e));
       const d = Math.round(parseFloat(this.st(r)) || 0);
@@ -344,6 +397,9 @@ class RipacUnaCard extends RipacBase {
       .wdr { font-size:10.5px; color:var(--secondary-text-color); margin-top:2px; }
       .wdw { position:absolute; top:4px; right:4px; width:18px; height:18px; border-radius:50%; background:var(--c); display:flex; align-items:center; justify-content:center; }
       .wdw ha-icon { --mdc-icon-size:12px; color:#000; }
+      .legend2 { display:flex; gap:12px; flex-wrap:wrap; font-size:10.5px; color:var(--secondary-text-color); margin-top:2px; }
+      .legend2 i { display:inline-block; width:10px; height:3px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+      .legend2 i.d { background:repeating-linear-gradient(90deg,#64b5f6 0 4px,transparent 4px 7px); }
       .exp { display:flex; gap:10px; align-items:flex-start; margin-top:10px; padding:10px 12px; border-radius:12px;
         background:color-mix(in srgb,var(--c) 12%,transparent); font-size:13px; line-height:1.4; color:var(--primary-text-color); }
       .exp ha-icon { color:var(--c); --mdc-icon-size:20px; flex:none; margin-top:1px; }
@@ -353,7 +409,7 @@ class RipacUnaCard extends RipacBase {
         <div style="flex:1"><div class="ttl">Una kod Ripča</div><div class="sub">${st ? `${st[2]} · ${trend}` : "nema podataka"}</div></div>
         ${st ? `<div class="badge" style="--c:${c}">${st[1]}</div>` : ""}</div>
       <div class="big"><span class="lvl">${isNaN(l) ? "–" : l.toFixed(1)}</span><span class="unit">cm</span></div>
-      ${this._spark(c)}
+      ${this._spark(c, pred)}
       ${ex ? `<div class="lbl">Šta očekivati</div><div class="exp" style="--c:${ex.col}"><ha-icon icon="${ex.icon}"></ha-icon><div>${ex.txt}<small>Procjena iz prognoze kiše i uzvodnih stanica</small></div></div>` : ""}
       ${wx.length ? `<div class="lbl">Vrijeme</div><div class="wk">${days}</div>` : ""}
       ${wrows ? `<div class="fc2" style="margin-top:8px">${wrows}</div>` : ""}
