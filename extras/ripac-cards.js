@@ -232,7 +232,15 @@ class RipacUnaCard extends RipacBase {
     try {
       const start = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
       const r = await this._hass.callWS({ type: "history/history_during_period", start_time: start, entity_ids: [UNA], minimal_response: true, no_attributes: true });
-      this._hist = (r[UNA] || []).map((p) => [(p.lu || p.lc) * 1000, parseFloat(p.s)]).filter((p) => !isNaN(p[1]));
+      let hist = (r[UNA] || []).map((p) => [(p.lu || p.lc) * 1000, parseFloat(p.s)]).filter((p) => !isNaN(p[1]));
+      try {
+        // fill gaps (restarts, unavailable) with hourly long-term statistics
+        const st = await this._hass.callWS({ type: "recorder/statistics_during_period", start_time: start, statistic_ids: [UNA], period: "hour", types: ["mean"] });
+        const first = hist.length ? hist[0][0] : Date.now();
+        const fill = (st[UNA] || []).map((x) => [typeof x.start === "number" ? x.start : new Date(x.start).getTime(), x.mean]).filter((x) => x[1] != null && x[0] < first - 1800e3);
+        hist = fill.concat(hist);
+      } catch (e) {}
+      this._hist = hist;
       this._render();
     } catch (e) {}
   }
