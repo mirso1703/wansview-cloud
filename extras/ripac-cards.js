@@ -308,8 +308,8 @@ class RipacUnaCard extends RipacBase {
       ${futLine ? `<path d="${futLine}L${x(fut[fut.length - 1][0])},${base}L${nowX},${base}Z" fill="url(#fg)"/><path d="${futLine}" fill="none" stroke="#64b5f6" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ""}
       <line x1="${nowX}" x2="${nowX}" y1="${top}" y2="${base}" stroke="var(--primary-text-color)" stroke-opacity=".35"/>
       <circle cx="${nowX}" cy="${y(pts[pts.length - 1][1])}" r="4" fill="${c}" stroke="#fff" stroke-width="1.5"/>
-      ${pk ? `<circle cx="${x(pk[0])}" cy="${y(pk[1])}" r="3.5" fill="${pkCol}"/><rect x="${x(pk[0]) - 22}" y="${y(pk[1]) - 19}" width="44" height="13" rx="6" fill="${pkCol}"/>
-        <text x="${x(pk[0])}" y="${y(pk[1]) - 10}" text-anchor="middle" font-size="8.5" font-weight="800" fill="#111">~${Math.round(pk[1])} cm</text>` : ""}
+      ${pk ? (() => { const lx = Math.min(W - 24, Math.max(left + 24, x(pk[0]))); return `<circle cx="${x(pk[0])}" cy="${y(pk[1])}" r="3.5" fill="${pkCol}"/><rect x="${lx - 22}" y="${y(pk[1]) - 19}" width="44" height="13" rx="6" fill="${pkCol}"/>
+        <text x="${lx}" y="${y(pk[1]) - 10}" text-anchor="middle" font-size="8.5" font-weight="800" fill="#111">~${Math.round(pk[1])} cm</text>`; })() : ""}
       ${xl}
     </svg>
     <div class="legend2"><span><i style="background:${c}"></i>izmjereno</span><span><i class="d"></i>procjena po prognozi kiše</span><span><i style="background:#42a5f5;opacity:.5"></i>kiša</span><span><i style="background:#ffb300"></i>180 voda na putu</span><span><i style="background:#e53935"></i>200 put plavi</span></div>`;
