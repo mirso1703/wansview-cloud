@@ -1068,6 +1068,18 @@ class RipacOsobeCard extends HTMLElement {
     });
     return m;
   }
+  _ipOpts(cur, phones, ips) {
+    const live = this._live();
+    let o = `<option value="">— bez mobitela —</option>`;
+    if (cur && !phones.some(([ip]) => ip === cur)) o += `<option value="${vEsc(cur)}" selected>${vEsc(cur)}${live[cur] ? " · na WiFi-ju" : " · nije na WiFi-ju"}</option>`;
+    phones.forEach(([ip, x]) => {
+      const taken = Object.entries(ips).find(([n, v]) => v === ip && v !== cur);
+      if (taken) return;
+      const t = String(x.attributes.online_time || "").replace(/^0 Day /, "").replace(/:\d\d$/, "");
+      o += `<option value="${ip}" ${ip === cur ? "selected" : ""}>${ip} · na WiFi-ju ${vEsc(t)}</option>`;
+    });
+    return o + `<option value="__manual">✏️ Upiši IP ručno…</option>`;
+  }
   async _setIp(name, ip) {
     const m = this._ips();
     if (ip) m[name] = ip; else delete m[name];
@@ -1091,7 +1103,9 @@ class RipacOsobeCard extends HTMLElement {
       return `<div class="p ${home ? "home" : ""}" data-id="${p.id}" data-name="${vEsc(p.name)}">
         <div class="av">${vEsc(p.name.slice(0, 1).toUpperCase())}</div>
         <div class="nm"><b>${vEsc(p.name)}</b><span>${home ? `🟢 u vikendici · ${src}` : "⚪ nije tu"}</span></div>
-        <input class="ip" list="ipl" inputmode="decimal" value="${vEsc(ip)}" placeholder="IP mobitela">
+        <div class="ipw">${this._manual && this._manual === p.id
+          ? `<input class="ip" inputmode="decimal" value="${vEsc(ip)}" placeholder="192.168.10.x">`
+          : `<select class="ips">${this._ipOpts(ip, phones, ips)}</select>`}</div>
         <button class="del" title="Obriši osobu"><ha-icon icon="mdi:trash-can-outline"></ha-icon></button>
       </div>`;
     }).join("");
@@ -1105,8 +1119,8 @@ class RipacOsobeCard extends HTMLElement {
       .av { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; background:rgba(127,127,127,.2); }
       .p.home .av { background:#4caf50; color:#fff; }
       .nm { display:flex; flex-direction:column; min-width:0; } .nm b { font-size:14px; } .nm span { font-size:11.5px; color:var(--secondary-text-color); }
-      input { font-size:13px; color:var(--primary-text-color); background:rgba(127,127,127,.12); border:1px solid transparent; border-radius:9px; padding:7px 8px; min-width:0; width:100%; box-sizing:border-box; font-family:ui-monospace,Menlo,monospace; }
-      input:focus { border-color:var(--primary-color); outline:none; }
+      select, input { font-size:13px; color:var(--primary-text-color); background:rgba(127,127,127,.12); border:1px solid transparent; border-radius:9px; padding:7px 8px; min-width:0; width:100%; box-sizing:border-box; font-family:ui-monospace,Menlo,monospace; }
+      input:focus, select:focus { border-color:var(--primary-color); outline:none; } select { appearance:auto; font-family:inherit; } .ipw { min-width:0; }
       .add input { font-family:inherit; }
       .del { background:none; border:0; color:var(--secondary-text-color); cursor:pointer; } .del ha-icon { --mdc-icon-size:18px; }
       .add { display:flex; gap:8px; margin-top:10px; } .add button { border:0; border-radius:10px; padding:8px 14px; background:var(--primary-color); color:#fff; font-size:14px; cursor:pointer; }
@@ -1114,7 +1128,6 @@ class RipacOsobeCard extends HTMLElement {
       .hint { font-size:11.5px; color:var(--secondary-text-color); margin-top:8px; line-height:1.4; }
     </style><ha-card>
       <div class="hd"><ha-icon icon="mdi:account-group"></ha-icon>Osobe<span class="n">u vikendici: ${vEsc(st["sensor.poznati_na_mrezi"] ? st["sensor.poznati_na_mrezi"].state : "–")}</span></div>
-      <datalist id="ipl">${phones.map(([ip, x]) => `<option value="${ip}">${vEsc((x.attributes.mac || "") + " · online " + (x.attributes.online_time || ""))}</option>`).join("")}</datalist>
       ${rows}
       ${free.length ? `<div class="free">Nepovezani mobiteli na WiFi-ju: ${free.map(([ip, x]) => `<b>${ip}</b> (online ${vEsc(x.attributes.online_time || "?")})`).join(", ")}</div>` : ""}
       <div class="add"><input placeholder="Nova osoba (npr. Tata)"><button>Dodaj</button></div>
@@ -1123,7 +1136,17 @@ class RipacOsobeCard extends HTMLElement {
     const R = this.shadowRoot;
     R.querySelectorAll(".p").forEach((row) => {
       const p = this._persons.find((x) => x.id === row.dataset.id);
-      row.querySelector(".ip").addEventListener("change", (ev) => this._setIp(p.name, ev.target.value.trim()));
+      const sel = row.querySelector(".ips");
+      if (sel) sel.addEventListener("change", (ev) => {
+        if (ev.target.value === "__manual") { this._manual = p.id; this._render(); const i = this.shadowRoot.querySelector(".ip"); if (i) i.focus(); return; }
+        this._setIp(p.name, ev.target.value);
+      });
+      const ipi = row.querySelector(".ip");
+      if (ipi) {
+        const done = () => { this._manual = null; this._setIp(p.name, ipi.value.trim()); };
+        ipi.addEventListener("change", done);
+        ipi.addEventListener("keydown", (e) => { if (e.key === "Enter") ipi.blur(); });
+      }
       row.querySelector(".del").addEventListener("click", async () => {
         if (confirm(`Obrisati osobu ${p.name}?`)) { await this._setIp(p.name, ""); await this._hass.callWS({ type: "person/delete", person_id: p.id }); this._load(); }
       });
