@@ -174,64 +174,107 @@ class WansviewNvrCard extends HTMLElement {
     const daysAvail = Object.keys(byDay).sort().reverse();
     if (!this._tlDay || !byDay[this._tlDay]) this._tlDay = daysAvail.find((d) => byDay[d].length) || todayKey;
     const day = this._tlDay;
-    const items = byDay[day];
-    const cams = [...new Set(items.map((it) => it.camera))].sort();
+    const kinds = this._kinds || (this._kinds = new Set(["person", "vehicle", "animal", "motion"]));
+    const all = byDay[day];
+    const counts = { person: 0, vehicle: 0, animal: 0, motion: 0 };
+    all.forEach((it) => counts[this._kind(it)]++);
+    const cams = [...new Set(all.map((it) => it.camera))].sort();
+    if (!cams.length) cams.push(...new Set(this._items.map((it) => it.camera)));
     const z = this._zoom;
     const pct = (sec) => (sec / 86400) * 100;
-    const ticks = [];
-    const step = z >= 4 ? 1 : z >= 2 ? 2 : 3;
-    for (let h = 0; h <= 24; h++)
-      ticks.push(`<div class="tick ${h % step ? "minor" : ""}" style="left:${pct(h * 3600)}%">${h % step || h === 24 ? "" : `<span>${String(h).padStart(2, "0")}</span>`}</div>`);
-    const now = new Date();
-    const isToday = now.toDateString() === new Date(day + "T12:00:00").toDateString();
-    const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-    if (!cams.length) cams.push(...new Set(this._items.map((it) => it.camera)));
-    const lanes = cams
-      .map((cam) => {
-        const evs = items
-          .map((it, i) => ({ it, i }))
-          .filter(({ it }) => it.camera === cam)
-          .map(({ it, i }) => {
-            const s = this._secs(it.time);
-            const w = pct(this._durSecs(it));
-            return `<div class="ev ${this._kind(it)}" data-i="${i}" style="left:${pct(s)}%;width:${w}%" title="${this._esc(it.time)} ${this._esc(it.tags || "")}"></div>`;
-          })
-          .join("");
-        return `<div class="lane">${evs}</div>`;
+    const isToday = day === todayKey;
+    const nowSec = n.getHours() * 3600 + n.getMinutes() * 60 + n.getSeconds();
+
+    // day / night from sun.sun (hour of day of next rising / setting is close enough for any day)
+    const sun = this._hass?.states["sun.sun"]?.attributes || {};
+    const hod = (iso, def) => {
+      if (!iso) return def;
+      const d = new Date(iso);
+      return d.getHours() * 3600 + d.getMinutes() * 60;
+    };
+    const rise = hod(sun.next_rising, 7 * 3600);
+    const set = hod(sun.next_setting, 16.5 * 3600);
+    const night = `<div class="night" style="left:0;width:${pct(rise)}%"></div><div class="night" style="left:${pct(set)}%;right:0"></div>
+      <div class="sunmark" style="left:${pct(rise)}%">☀︎</div><div class="sunmark moon" style="left:${pct(set)}%">☾</div>`;
+
+    // activity histogram, 30-min bins
+    const bins = Array.from({ length: 48 }, () => ({ n: 0, k: { person: 0, vehicle: 0, animal: 0, motion: 0 } }));
+    all.forEach((it) => {
+      const k = this._kind(it);
+      if (!kinds.has(k)) return;
+      const b = bins[Math.min(47, Math.floor(this._secs(it.time) / 1800))];
+      b.n++;
+      b.k[k]++;
+    });
+    const max = Math.max(1, ...bins.map((b) => b.n));
+    const rank = ["person", "vehicle", "animal", "motion"];
+    const hist = bins
+      .map((b, i) => {
+        if (!b.n) return "";
+        const top = rank.find((k) => b.k[k]);
+        return `<div class="bar ${top}" style="left:${(i / 48) * 100}%;height:${18 + (b.n / max) * 82}%"></div>`;
       })
       .join("");
-    const counts = { person: 0, vehicle: 0, animal: 0, motion: 0 };
-    items.forEach((it) => counts[this._kind(it)]++);
-    const dayChips = daysAvail
-      .map((d) => `<button class="dchip ${d === day ? "on" : ""}" data-day="${d}">${this._dayLabel(d)}</button>`)
+
+    const ticks = [];
+    const step = z >= 4 ? 1 : z >= 2 ? 2 : 3;
+    for (let hr = 0; hr < 24; hr++)
+      ticks.push(`<div class="tick ${hr % step ? "minor" : ""}" style="left:${pct(hr * 3600)}%">${hr % step ? "" : `<span>${String(hr).padStart(2, "0")}:00</span>`}</div>`);
+
+    const lanes = cams
+      .map((cam) => {
+        const evs = all
+          .map((it, i) => ({ it, i }))
+          .filter(({ it }) => it.camera === cam && kinds.has(this._kind(it)))
+          .map(({ it, i }) => {
+            const s = this._secs(it.time);
+            return `<div class="ev ${this._kind(it)}" data-i="${i}" style="left:${pct(s)}%;width:${pct(this._durSecs(it))}%"></div>`;
+          })
+          .join("");
+        return `<div class="lane"><div class="track"></div>${evs}</div>`;
+      })
       .join("");
-    const list = items
+    const names = cams
+      .map((cam) => {
+        const its = all.filter((it) => it.camera === cam && kinds.has(this._kind(it)));
+        const img = (its.find((it) => it.image) || {}).image;
+        return `<div class="nm">${img ? `<img src="${img}">` : `<span class="ava">${this._esc(cam[0] || "?")}</span>`}
+          <span class="nt">${this._esc(cam)}</span>${its.length ? `<span class="bd">${its.length}</span>` : ""}</div>`;
+      })
+      .join("");
+    const dayChips = daysAvail
+      .map((d) => `<button class="dchip ${d === day ? "on" : ""}" data-day="${d}">${this._dayLabel(d)}<small>${byDay[d].length}</small></button>`)
+      .join("");
+    const label = { person: "Osoba", vehicle: "Vozilo", animal: "Životinja", motion: "Pokret" };
+    const icon = { person: "🧍", vehicle: "🚗", animal: "🐾", motion: "〰️" };
+    const legend = rank
+      .map((k) => `<button class="lg ${k} ${kinds.has(k) ? "on" : ""}" data-k="${k}"><i></i>${label[k]}<b>${counts[k]}</b></button>`)
+      .join("");
+    const list = all
+      .map((it, i) => ({ it, i }))
+      .filter(({ it }) => kinds.has(this._kind(it)))
       .map(
-        (it, i) => `<div class="row" data-i="${i}">
-          <span class="dot ${this._kind(it)}"></span><b>${this._esc(it.time.slice(0, 5))}</b>
-          <span class="rc">${this._esc(it.camera)}</span>
-          <span class="rt">${it.reolink ? this._tagIcons(it.tags) : it.count > 1 ? `×${it.count}` : ""}</span>
-          ${it.image ? `<img loading="lazy" src="${it.image}">` : ""}</div>`
+        ({ it, i }) => `<div class="row" data-i="${i}">
+          <div class="rthumb ${this._kind(it)}">${it.image ? `<img loading="lazy" src="${it.image}">` : `<span>${icon[this._kind(it)]}</span>`}</div>
+          <div class="rtx"><b>${this._esc(it.time.slice(0, 5))}</b><span>${this._esc(it.camera)}${it.count > 1 ? ` · ${it.count} klipa` : ""}${it.dur ? ` · ${this._esc(it.dur)}` : ""}</span></div>
+          <span class="rk ${this._kind(it)}">${label[this._kind(it)]}</span></div>`
       )
       .join("");
     return `
       <div class="dchips">${dayChips}</div>
-      <div class="tlbar">
-        <div class="legend">
-          <span><i class="dot person"></i>Osoba ${counts.person}</span><span><i class="dot vehicle"></i>Vozilo ${counts.vehicle}</span>
-          <span><i class="dot animal"></i>Životinja ${counts.animal}</span><span><i class="dot motion"></i>Pokret ${counts.motion}</span>
-        </div>
-        <div class="zoom">${[1, 2, 4, 8].map((n) => `<button data-z="${n}" class="${n === z ? "on" : ""}">${n}×</button>`).join("")}</div>
-      </div>
+      <div class="legend">${legend}</div>
       <div class="tl">
-        <div class="tlnames"><div class="sp"></div>${cams.map((c) => `<div>${this._esc(c)}</div>`).join("")}</div>
+        <div class="tlnames"><div class="sp"></div>${names}</div>
         <div class="tlscroll"><div class="tlinner" style="width:${z * 100}%">
+          ${night}
+          <div class="hist">${hist}</div>
           <div class="axis">${ticks.join("")}</div>
           ${lanes}
-          ${isToday ? `<div class="now" style="left:${pct(nowSec)}%"></div>` : ""}
+          ${isToday ? `<div class="now" style="left:${pct(nowSec)}%"><span>${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}</span></div>` : ""}
         </div></div>
       </div>
-      <div class="tlist">${list}</div>`;
+      <div class="zoom">${[1, 2, 4, 8].map((x) => `<button data-z="${x}" class="${x === z ? "on" : ""}">${x}×</button>`).join("")}</div>
+      <div class="tlist">${list || `<div class="empty">Nema događaja za ovaj dan.</div>`}</div>`;
   }
 
   _dayLabel(day) {
@@ -361,41 +404,63 @@ class WansviewNvrCard extends HTMLElement {
         .mbar { display:flex; gap:10px; margin-top:12px; }
         .mbar button, .mbar a { background:rgba(255,255,255,.12); color:#fff; border:0; border-radius:18px; padding:8px 16px;
                  font-size:14px; text-decoration:none; cursor:pointer; }
-        .seg { display:flex; background:rgba(127,127,127,.15); border-radius:10px; padding:3px; margin:4px 0 8px; }
-        .seg button { flex:1; border:0; background:transparent; color:var(--primary-text-color); padding:6px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; }
-        .seg button.on { background:var(--card-background-color,#222); box-shadow:0 1px 3px rgba(0,0,0,.3); }
-        .dchips { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; margin-bottom:8px; }
-        .dchip { flex:none; border:1px solid var(--divider-color); background:transparent; color:var(--primary-text-color); border-radius:14px; padding:4px 10px; font-size:12px; text-transform:capitalize; cursor:pointer; }
-        .dchip.on { background:var(--primary-color); border-color:var(--primary-color); color:#fff; }
-        .tlbar { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap; }
-        .legend { display:flex; gap:10px; font-size:11px; color:var(--secondary-text-color); flex-wrap:wrap; }
-        .legend span { display:flex; align-items:center; gap:4px; }
-        .zoom { display:flex; gap:2px; }
-        .zoom button { border:1px solid var(--divider-color); background:transparent; color:var(--primary-text-color); border-radius:8px; padding:3px 8px; font-size:12px; cursor:pointer; }
-        .zoom button.on { background:var(--primary-color); color:#fff; border-color:var(--primary-color); }
-        .tl { display:flex; border:1px solid var(--divider-color); border-radius:10px; overflow:hidden; }
-        .tlnames { flex:none; width:78px; border-right:1px solid var(--divider-color); font-size:11px; font-weight:700; color:var(--primary-text-color); }
-        .tlnames .sp { height:20px; }
-        .tlnames div:not(.sp) { height:34px; display:flex; align-items:center; padding:0 6px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border-top:1px solid rgba(127,127,127,.15); }
-        .tlscroll { flex:1; overflow-x:auto; }
-        .tlinner { position:relative; min-width:100%; }
-        .axis { position:relative; height:20px; }
-        .tick { position:absolute; top:0; bottom:-2000px; border-left:1px solid rgba(127,127,127,.22); pointer-events:none; }
-        .tick.minor { border-left-style:dashed; border-left-color:rgba(127,127,127,.1); }
-        .tick span { position:absolute; top:3px; left:3px; font-size:10px; color:var(--secondary-text-color); }
-        .tl { position:relative; }
-        .tlinner { overflow:hidden; }
-        .lane { position:relative; height:34px; border-top:1px solid rgba(127,127,127,.15); }
-        .ev { position:absolute; top:7px; height:20px; min-width:5px; border-radius:4px; cursor:pointer; opacity:.9; }
-        .ev:hover { opacity:1; outline:2px solid #fff; }
-        .person { background:#e53935; } .vehicle { background:#fb8c00; } .animal { background:#43a047; } .motion { background:#1e88e5; }
-        .dot { display:inline-block; width:9px; height:9px; border-radius:50%; flex:none; }
-        .now { position:absolute; top:0; bottom:0; width:2px; background:#ffeb3b; box-shadow:0 0 6px #ffeb3b; pointer-events:none; }
-        .tlist { margin-top:10px; display:flex; flex-direction:column; gap:2px; max-height:50vh; overflow-y:auto; }
-        .row { display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:8px; cursor:pointer; font-size:13px; color:var(--primary-text-color); }
-        .row:hover { background:rgba(127,127,127,.12); }
-        .row .rc { color:var(--secondary-text-color); flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-        .row img { width:56px; height:32px; object-fit:cover; border-radius:5px; }
+        .seg { display:flex; background:rgba(127,127,127,.14); border-radius:12px; padding:3px; margin:6px 0 10px; }
+        .seg button { flex:1; border:0; background:transparent; color:var(--secondary-text-color); padding:7px; border-radius:9px; font-size:13px; font-weight:600; cursor:pointer; transition:all .2s; }
+        .seg button.on { background:var(--card-background-color,#262626); color:var(--primary-text-color); box-shadow:0 1px 4px rgba(0,0,0,.35); }
+        .dchips { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; margin-bottom:10px; }
+        .dchip { flex:none; display:flex; align-items:center; gap:6px; border:0; background:rgba(127,127,127,.14); color:var(--primary-text-color);
+                 border-radius:16px; padding:6px 12px; font-size:13px; font-weight:600; text-transform:capitalize; cursor:pointer; }
+        .dchip small { font-size:11px; opacity:.6; font-weight:700; }
+        .dchip.on { background:var(--primary-color); color:#fff; }
+        .dchip.on small { opacity:.85; }
+        .legend { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; margin-bottom:10px; }
+        .lg { flex:none; display:flex; align-items:center; gap:6px; border:1px solid rgba(127,127,127,.25); background:transparent; color:var(--secondary-text-color);
+              border-radius:14px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer; opacity:.45; transition:all .2s; }
+        .lg.on { opacity:1; color:var(--primary-text-color); border-color:transparent; background:rgba(127,127,127,.14); }
+        .lg i { width:8px; height:8px; border-radius:50%; background:var(--c); box-shadow:0 0 6px var(--c); }
+        .lg b { font-weight:800; }
+        .person { --c:#ff5252; } .vehicle { --c:#ffa726; } .animal { --c:#66bb6a; } .motion { --c:#42a5f5; }
+        .tl { display:flex; border-radius:14px; overflow:hidden; background:rgba(0,0,0,.22); border:1px solid rgba(127,127,127,.16); }
+        .tlnames { flex:none; width:118px; background:rgba(127,127,127,.06); border-right:1px solid rgba(127,127,127,.16); z-index:2; }
+        .tlnames .sp { height:58px; }
+        .nm { height:42px; display:flex; align-items:center; gap:7px; padding:0 8px; }
+        .nm img, .nm .ava { width:26px; height:26px; border-radius:8px; object-fit:cover; flex:none; }
+        .nm .ava { display:flex; align-items:center; justify-content:center; background:rgba(127,127,127,.25); font-size:12px; font-weight:700; color:var(--primary-text-color); }
+        .nt { flex:1; font-size:12px; font-weight:700; color:var(--primary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .bd { font-size:10px; font-weight:800; color:var(--secondary-text-color); background:rgba(127,127,127,.18); border-radius:8px; padding:1px 6px; }
+        .tlscroll { flex:1; overflow-x:auto; scrollbar-width:thin; }
+        .tlinner { position:relative; min-width:100%; overflow:hidden; padding-bottom:4px; }
+        .night { position:absolute; top:0; bottom:0; background:linear-gradient(180deg,rgba(40,60,140,.16),rgba(20,30,80,.10)); pointer-events:none; }
+        .sunmark { position:absolute; top:2px; transform:translateX(-50%); font-size:11px; color:#ffca28; pointer-events:none; }
+        .sunmark.moon { color:#9fa8da; }
+        .hist { position:relative; height:34px; margin-top:2px; }
+        .bar { position:absolute; bottom:0; width:calc(100% / 48 - 2px); margin-left:1px; border-radius:3px 3px 1px 1px;
+               background:linear-gradient(180deg,var(--c),color-mix(in srgb,var(--c) 25%,transparent)); opacity:.8; }
+        .axis { position:relative; height:22px; border-bottom:1px solid rgba(127,127,127,.16); }
+        .tick { position:absolute; top:0; bottom:-1000px; border-left:1px solid rgba(127,127,127,.13); pointer-events:none; }
+        .tick.minor { border-left:1px dotted rgba(127,127,127,.08); }
+        .tick span { position:absolute; top:5px; left:4px; font-size:10px; font-weight:600; color:var(--secondary-text-color); letter-spacing:.2px; }
+        .lane { position:relative; height:42px; }
+        .track { position:absolute; left:4px; right:4px; top:17px; height:8px; border-radius:4px; background:rgba(127,127,127,.09); }
+        .ev { position:absolute; top:12px; height:18px; min-width:7px; border-radius:9px; cursor:pointer; transform:translateX(-3px);
+              background:linear-gradient(180deg,color-mix(in srgb,var(--c) 85%,#fff),var(--c)); box-shadow:0 0 10px color-mix(in srgb,var(--c) 55%,transparent);
+              transition:transform .15s; }
+        .ev:hover { transform:translateX(-3px) scaleY(1.25); z-index:3; }
+        .now { position:absolute; top:0; bottom:0; width:2px; background:#ffeb3b; box-shadow:0 0 8px #ffeb3b; pointer-events:none; z-index:4; }
+        .now span { position:absolute; top:2px; left:4px; font-size:10px; font-weight:800; color:#111; background:#ffeb3b; border-radius:6px; padding:0 5px; }
+        .zoom { display:flex; justify-content:flex-end; gap:4px; margin:8px 0 4px; }
+        .zoom button { border:0; background:rgba(127,127,127,.14); color:var(--secondary-text-color); border-radius:8px; padding:4px 10px; font-size:12px; font-weight:700; cursor:pointer; }
+        .zoom button.on { background:var(--primary-color); color:#fff; }
+        .tlist { margin-top:6px; display:flex; flex-direction:column; gap:4px; max-height:55vh; overflow-y:auto; }
+        .row { display:flex; align-items:center; gap:10px; padding:6px; border-radius:12px; cursor:pointer; background:rgba(127,127,127,.06); transition:background .15s; }
+        .row:hover { background:rgba(127,127,127,.14); }
+        .rthumb { width:64px; height:40px; border-radius:8px; overflow:hidden; flex:none; display:flex; align-items:center; justify-content:center;
+                  background:color-mix(in srgb,var(--c) 22%,#151515); box-shadow:inset 3px 0 0 var(--c); font-size:18px; }
+        .rthumb img { width:100%; height:100%; object-fit:cover; }
+        .rtx { flex:1; display:flex; flex-direction:column; min-width:0; }
+        .rtx b { font-size:15px; color:var(--primary-text-color); }
+        .rtx span { font-size:12px; color:var(--secondary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .rk { font-size:11px; font-weight:700; color:var(--c); background:color-mix(in srgb,var(--c) 16%,transparent); border-radius:10px; padding:3px 9px; }
       </style>
       <ha-card>
         ${camsCfg.length && c.recent === false ? `<div class="head"><div class="title">${this._esc(c.title)}</div>${c.link ? `<a class="more" href="${c.link}">Svi snimci ›</a>` : ""}</div>
@@ -431,6 +496,14 @@ class WansviewNvrCard extends HTMLElement {
       b.addEventListener("click", () => {
         this._view = b.dataset.v;
         try { localStorage.setItem("wvnvr-view", this._view); } catch (e) {}
+        this._render();
+      })
+    );
+    this.shadowRoot.querySelectorAll(".lg").forEach((b) =>
+      b.addEventListener("click", () => {
+        const k = b.dataset.k;
+        if (this._kinds.has(k) && this._kinds.size > 1) this._kinds.delete(k);
+        else this._kinds.add(k);
         this._render();
       })
     );
