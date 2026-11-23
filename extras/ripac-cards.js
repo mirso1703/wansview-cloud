@@ -390,8 +390,8 @@ class RipacUnaCard extends RipacBase {
     else if (top >= 195) { col = "#ffb300"; icon = "mdi:alert"; txt += " Voda bi mogla izaći na put."; }
     else txt += " Put ostaje prohodan.";
     if (wx.slice(0, 3).some((d) => /snow/.test(d.condition)) && peak > l) txt += " Dio padavina je snijeg, pa porast može kasniti.";
-    if (prog.startsWith("raste")) { col = "#42a5f5"; icon = "mdi:trending-up"; }
-    return { txt, col, icon };
+    if (prog.startsWith("raste") && icon !== "mdi:trending-down") { col = "#42a5f5"; icon = "mdi:trending-up"; }
+    return { txt, col, icon, rain: !!this._rainText() };
   }
   _render() {
     if (!this._hass) return;
@@ -465,10 +465,21 @@ class RipacUnaCard extends RipacBase {
       .legend2 { display:flex; gap:12px; flex-wrap:wrap; font-size:10.5px; color:var(--secondary-text-color); margin-top:2px; }
       .legend2 i { display:inline-block; width:10px; height:3px; border-radius:2px; margin-right:5px; vertical-align:middle; }
       .legend2 i.d { background:repeating-linear-gradient(90deg,#64b5f6 0 4px,transparent 4px 7px); }
-      .exp { position:relative; overflow:hidden; margin-top:10px; padding:10px 64px 10px 12px; border-radius:12px;
-        background:color-mix(in srgb,var(--c) 12%,transparent); font-size:13px; line-height:1.4; color:var(--primary-text-color); }
-      .exp > div { position:relative; }
-      .exp ha-icon.bg { position:absolute; right:-8px; bottom:-14px; color:var(--c); opacity:.22; --mdc-icon-size:84px; pointer-events:none; }
+      .exp { position:relative; overflow:hidden; margin-top:10px; padding:12px 78px 26px 14px; border-radius:14px;
+        background:linear-gradient(135deg,color-mix(in srgb,var(--c) 16%,transparent),color-mix(in srgb,var(--c) 5%,transparent));
+        font-size:13px; line-height:1.45; color:var(--primary-text-color); }
+      .exp > div { position:relative; z-index:1; }
+      .exp .sym { position:absolute; top:10px; right:14px; width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+        background:color-mix(in srgb,var(--c) 18%,transparent); color:var(--c); }
+      .exp .sym ha-icon { --mdc-icon-size:30px; }
+      .exp .sym .tr { position:absolute; right:-4px; bottom:-4px; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+        background:var(--ha-card-background,var(--card-background-color,#1c1c1c)); color:var(--c); }
+      .exp .sym .tr ha-icon { --mdc-icon-size:15px; }
+      .exp svg.wv { position:absolute; left:0; bottom:0; width:200%; height:30px; color:var(--c); animation:wv 14s linear infinite; }
+      .exp svg.wv.b { opacity:.10; height:38px; animation-duration:22s; }
+      .exp svg.wv.a { opacity:.18; }
+      @keyframes wv { from { transform:translateX(0); } to { transform:translateX(-50%); } }
+      @media (prefers-reduced-motion: reduce) { .exp svg.wv { animation:none; } }
       .exp small { display:block; font-size:10.5px; color:var(--secondary-text-color); margin-top:3px; }
     </style><ha-card>
       <div class="hdw"><div class="hd1"><div class="shield sm" style="--c:${c}"><ha-icon icon="mdi:waves"></ha-icon></div>
@@ -478,7 +489,7 @@ class RipacUnaCard extends RipacBase {
           <ha-icon icon="${tr >= 3 ? "mdi:arrow-up-bold" : tr >= 1 ? "mdi:arrow-top-right" : tr <= -3 ? "mdi:arrow-down-bold" : tr <= -1 ? "mdi:arrow-bottom-right" : "mdi:arrow-right"}"></ha-icon>${Math.abs(tr) >= 1 ? `<small>${tr > 0 ? "+" : ""}${tr.toFixed(1)}</small>` : ""}</div>
         ${st ? `<div class="badge" style="--c:${c}">${st[1]}</div>` : ""}</div></div>
       ${this._spark(c, pred)}
-      ${ex ? `<div class="lbl">Šta očekivati</div><div class="exp" style="--c:${ex.col}"><ha-icon class="bg" icon="${ex.icon}"></ha-icon><div>${ex.txt}<small>Procjena iz prognoze kiše i uzvodnih stanica</small></div></div>` : ""}
+      ${ex ? `<div class="lbl">Šta očekivati</div><div class="exp" style="--c:${ex.col}"><svg class="wv b" viewBox="0 0 400 30" preserveAspectRatio="none"><path fill="currentColor" d="M0 15 Q 25 5 50 15 T 100 15 T 150 15 T 200 15 T 250 15 T 300 15 T 350 15 T 400 15 V 30 H 0 Z"/></svg><svg class="wv a" viewBox="0 0 400 30" preserveAspectRatio="none"><path fill="currentColor" d="M0 15 Q 25 5 50 15 T 100 15 T 150 15 T 200 15 T 250 15 T 300 15 T 350 15 T 400 15 V 30 H 0 Z"/></svg><div class="sym"><ha-icon icon="${ex.rain ? "mdi:weather-pouring" : ex.icon}"></ha-icon>${ex.rain ? `<span class="tr"><ha-icon icon="${ex.icon}"></ha-icon></span>` : ""}</div><div>${ex.txt}<small>Procjena iz prognoze kiše i uzvodnih stanica</small></div></div>` : ""}
 
       ${wx.length ? `<div class="lbl">Vrijeme</div><div class="wk">${days}</div>` : ""}
       ${wrows ? `<div class="fc2" style="margin-top:8px">${wrows}</div>` : ""}
