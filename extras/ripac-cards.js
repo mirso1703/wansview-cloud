@@ -382,6 +382,7 @@ class RipacUnaCard extends RipacBase {
       txt = `${this._rainText() || ""} Ukupno ~${Math.round(rain3)} mm u 3 dana, pa bi Una mogla porasti do oko <b>${peak} cm</b>${pkDay ? ` (${pkDay})` : ""}.`;
       col = "#42a5f5"; icon = "mdi:trending-up";
     } else {
+      icon = end < l - 2 ? "mdi:trending-down" : "mdi:waves";
       txt = (this._rainText() ? this._rainText() + " " : "") + (end < l - 2 ? `Bez značajne kiše (${Math.round(rain3)} mm u 3 dana) – Una polako opada, oko <b>${end} cm</b> za 3 dana.` : `Bez značajne kiše – Una ostaje mirna oko <b>${Math.round(l)} cm</b>.`);
     }
     const top = Math.max(peak, l);
@@ -464,9 +465,10 @@ class RipacUnaCard extends RipacBase {
       .legend2 { display:flex; gap:12px; flex-wrap:wrap; font-size:10.5px; color:var(--secondary-text-color); margin-top:2px; }
       .legend2 i { display:inline-block; width:10px; height:3px; border-radius:2px; margin-right:5px; vertical-align:middle; }
       .legend2 i.d { background:repeating-linear-gradient(90deg,#64b5f6 0 4px,transparent 4px 7px); }
-      .exp { display:flex; gap:10px; align-items:flex-start; margin-top:10px; padding:10px 12px; border-radius:12px;
+      .exp { position:relative; overflow:hidden; margin-top:10px; padding:10px 64px 10px 12px; border-radius:12px;
         background:color-mix(in srgb,var(--c) 12%,transparent); font-size:13px; line-height:1.4; color:var(--primary-text-color); }
-      .exp ha-icon { color:var(--c); --mdc-icon-size:20px; flex:none; margin-top:1px; }
+      .exp > div { position:relative; }
+      .exp ha-icon.bg { position:absolute; right:-8px; bottom:-14px; color:var(--c); opacity:.22; --mdc-icon-size:84px; pointer-events:none; }
       .exp small { display:block; font-size:10.5px; color:var(--secondary-text-color); margin-top:3px; }
     </style><ha-card>
       <div class="hdw"><div class="hd1"><div class="shield sm" style="--c:${c}"><ha-icon icon="mdi:waves"></ha-icon></div>
@@ -476,7 +478,7 @@ class RipacUnaCard extends RipacBase {
           <ha-icon icon="${tr >= 3 ? "mdi:arrow-up-bold" : tr >= 1 ? "mdi:arrow-top-right" : tr <= -3 ? "mdi:arrow-down-bold" : tr <= -1 ? "mdi:arrow-bottom-right" : "mdi:arrow-right"}"></ha-icon>${Math.abs(tr) >= 1 ? `<small>${tr > 0 ? "+" : ""}${tr.toFixed(1)}</small>` : ""}</div>
         ${st ? `<div class="badge" style="--c:${c}">${st[1]}</div>` : ""}</div></div>
       ${this._spark(c, pred)}
-      ${ex ? `<div class="lbl">Šta očekivati</div><div class="exp" style="--c:${ex.col}"><ha-icon icon="${ex.icon}"></ha-icon><div>${ex.txt}<small>Procjena iz prognoze kiše i uzvodnih stanica</small></div></div>` : ""}
+      ${ex ? `<div class="lbl">Šta očekivati</div><div class="exp" style="--c:${ex.col}"><ha-icon class="bg" icon="${ex.icon}"></ha-icon><div>${ex.txt}<small>Procjena iz prognoze kiše i uzvodnih stanica</small></div></div>` : ""}
 
       ${wx.length ? `<div class="lbl">Vrijeme</div><div class="wk">${days}</div>` : ""}
       ${wrows ? `<div class="fc2" style="margin-top:8px">${wrows}</div>` : ""}
