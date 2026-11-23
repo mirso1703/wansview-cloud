@@ -168,9 +168,11 @@ class WansviewNvrCard extends HTMLElement {
   }
 
   _timeline(byDay) {
+    const n = new Date();
+    const todayKey = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+    byDay[todayKey] = byDay[todayKey] || [];
     const daysAvail = Object.keys(byDay).sort().reverse();
-    if (!daysAvail.length) return "";
-    if (!this._tlDay || !byDay[this._tlDay]) this._tlDay = daysAvail[0];
+    if (!this._tlDay || !byDay[this._tlDay]) this._tlDay = daysAvail.find((d) => byDay[d].length) || todayKey;
     const day = this._tlDay;
     const items = byDay[day];
     const cams = [...new Set(items.map((it) => it.camera))].sort();
@@ -183,6 +185,7 @@ class WansviewNvrCard extends HTMLElement {
     const now = new Date();
     const isToday = now.toDateString() === new Date(day + "T12:00:00").toDateString();
     const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    if (!cams.length) cams.push(...new Set(this._items.map((it) => it.camera)));
     const lanes = cams
       .map((cam) => {
         const evs = items
