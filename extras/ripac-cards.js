@@ -1050,7 +1050,8 @@ class RipacOsobeCard extends HTMLElement {
   getCardSize() { return 3; }
   set hass(h) {
     this._hass = h;
-    const key = Object.values(h.states).filter((x) => /^(person|device_tracker)\./.test(x.entity_id)).map((x) => x.entity_id + x.state).join("|");
+    const key = Object.values(h.states).filter((x) => /^(person|device_tracker)\./.test(x.entity_id) || x.entity_id === "input_text.osobe_ip")
+      .map((x) => x.entity_id + x.state + (x.attributes.ip || "")).join("|");
     const a = this.shadowRoot && this.shadowRoot.activeElement;
     if (key !== this._key && !(a && /INPUT|SELECT/.test(a.tagName))) { this._key = key; this._load(); }
   }
@@ -1058,71 +1059,73 @@ class RipacOsobeCard extends HTMLElement {
     try { const r = await this._hass.callWS({ type: "person/list" }); this._persons = r.storage || []; } catch (e) { this._persons = []; }
     this._render();
   }
-  _phones() {
-    const st = this._hass.states;
-    return Object.keys(st).filter((e) => {
-      if (!e.startsWith("device_tracker.")) return false;
-      const a = st[e].attributes;
-      if (a.source_type !== "router") return false;
-      const b = parseInt(String(a.mac || "").slice(0, 2), 16);
-      return /mobitel|phone|iphone|android|galaxy|pixel/i.test(e + (a.hostname || "")) || (!isNaN(b) && (b & 2));
+  _ips() { try { return JSON.parse(this._hass.states["input_text.osobe_ip"].state) || {}; } catch (e) { return {}; } }
+  _live() {
+    const m = {};
+    Object.values(this._hass.states).forEach((x) => {
+      const a = x.attributes;
+      if (x.entity_id.startsWith("device_tracker.") && a.source_type === "router" && x.state === "home" && a.ip) m[a.ip] = x;
     });
+    return m;
   }
-  _opts(cur, used) {
-    const st = this._hass.states;
-    const list = this._phones(); if (cur && !list.includes(cur)) list.push(cur);
-    return `<option value="">— bez mobitela —</option>` + list.filter((e) => e === cur || !used.has(e)).map((e) => {
-      const s = st[e]; const nm = s ? (s.attributes.friendly_name || e) : e;
-      return `<option value="${e}" ${e === cur ? "selected" : ""}>${vEsc(nm)}${s && s.state === "home" ? " · sada na WiFi-ju" : ""}</option>`;
-    }).join("");
-  }
-  async _setPhone(p, tracker) {
-    const gps = (p.device_trackers || []).filter((t) => !this._phones().includes(t) && !(this._hass.states[t] && this._hass.states[t].attributes.source_type === "router"));
-    await this._hass.callWS({ type: "person/update", person_id: p.id, name: p.name, user_id: p.user_id || null,
-      device_trackers: tracker ? [...gps, tracker] : gps, picture: p.picture || null });
-    await this._load();
+  async _setIp(name, ip) {
+    const m = this._ips();
+    if (ip) m[name] = ip; else delete m[name];
+    const v = JSON.stringify(m);
+    if (v.length > 255) { alert("Previše osoba za jedno polje (255 znakova)."); return; }
+    await this._hass.callService("input_text", "set_value", { entity_id: "input_text.osobe_ip", value: v });
   }
   _render() {
     if (!this._hass) return;
-    const st = this._hass.states;
-    const used = new Set(); (this._persons || []).forEach((p) => (p.device_trackers || []).forEach((t) => used.add(t)));
+    const st = this._hass.states, ips = this._ips(), live = this._live();
+    const phones = Object.entries(live).filter(([ip, x]) => {
+      const b = parseInt(String(x.attributes.mac || "").slice(0, 2), 16);
+      return /mobitel|phone|iphone|android|galaxy|pixel/i.test(x.entity_id + (x.attributes.hostname || "")) || (!isNaN(b) && (b & 2));
+    });
     const rows = (this._persons || []).map((p) => {
-      const ps = st["person." + p.id] || Object.values(st).find((x) => x.entity_id.startsWith("person.") && x.attributes.id === p.id);
-      const home = ps && ps.state === "home";
-      const ph = (p.device_trackers || []).find((t) => st[t] && st[t].attributes.source_type === "router") || "";
-      const gps = (p.device_trackers || []).filter((t) => t !== ph);
-      return `<div class="p ${home ? "home" : ""}" data-id="${p.id}">
+      const ps = Object.values(st).find((x) => x.entity_id.startsWith("person.") && x.attributes.id === p.id);
+      const ip = ips[p.name] || "";
+      const onWifi = ip && live[ip];
+      const home = (ps && ps.state === "home") || onWifi;
+      const src = onWifi ? "na WiFi-ju" : ps && ps.state === "home" ? "po GPS-u" : "";
+      return `<div class="p ${home ? "home" : ""}" data-id="${p.id}" data-name="${vEsc(p.name)}">
         <div class="av">${vEsc(p.name.slice(0, 1).toUpperCase())}</div>
-        <div class="nm"><b>${vEsc(p.name)}</b><span>${home ? "🟢 u vikendici" : "⚪ nije tu"}${gps.length ? " · GPS" : ""}</span></div>
-        <select data-ph>${this._opts(ph, used)}</select>
+        <div class="nm"><b>${vEsc(p.name)}</b><span>${home ? `🟢 u vikendici · ${src}` : "⚪ nije tu"}</span></div>
+        <input class="ip" list="ipl" inputmode="decimal" value="${vEsc(ip)}" placeholder="IP mobitela">
         <button class="del" title="Obriši osobu"><ha-icon icon="mdi:trash-can-outline"></ha-icon></button>
       </div>`;
     }).join("");
+    const free = phones.filter(([ip]) => !Object.values(ips).includes(ip));
     this.shadowRoot.innerHTML = `<style>
       ha-card { padding:14px 14px 12px; }
       .hd { display:flex; align-items:center; gap:8px; font-size:16px; font-weight:600; margin-bottom:10px; }
       .hd ha-icon { --mdc-icon-size:22px; color:var(--primary-color); } .hd .n { margin-left:auto; font-size:12px; font-weight:500; color:var(--secondary-text-color); }
-      .p { display:grid; grid-template-columns:36px minmax(0,1fr) minmax(0,1.3fr) auto; align-items:center; gap:10px; padding:8px 0; border-top:1px solid rgba(127,127,127,.12); }
+      .p { display:grid; grid-template-columns:36px minmax(0,1fr) minmax(0,1.1fr) auto; align-items:center; gap:10px; padding:8px 0; border-top:1px solid rgba(127,127,127,.12); }
       .p:first-of-type { border-top:0; }
       .av { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; background:rgba(127,127,127,.2); }
       .p.home .av { background:#4caf50; color:#fff; }
       .nm { display:flex; flex-direction:column; min-width:0; } .nm b { font-size:14px; } .nm span { font-size:11.5px; color:var(--secondary-text-color); }
-      select, .add input { font-size:13px; color:var(--primary-text-color); background:rgba(127,127,127,.12); border:1px solid transparent; border-radius:9px; padding:7px 8px; min-width:0; width:100%; box-sizing:border-box; }
+      input { font-size:13px; color:var(--primary-text-color); background:rgba(127,127,127,.12); border:1px solid transparent; border-radius:9px; padding:7px 8px; min-width:0; width:100%; box-sizing:border-box; font-family:ui-monospace,Menlo,monospace; }
+      input:focus { border-color:var(--primary-color); outline:none; }
+      .add input { font-family:inherit; }
       .del { background:none; border:0; color:var(--secondary-text-color); cursor:pointer; } .del ha-icon { --mdc-icon-size:18px; }
       .add { display:flex; gap:8px; margin-top:10px; } .add button { border:0; border-radius:10px; padding:8px 14px; background:var(--primary-color); color:#fff; font-size:14px; cursor:pointer; }
+      .free { margin-top:10px; font-size:12px; color:var(--secondary-text-color); } .free b { font-family:ui-monospace,Menlo,monospace; color:var(--primary-text-color); font-weight:600; }
       .hint { font-size:11.5px; color:var(--secondary-text-color); margin-top:8px; line-height:1.4; }
     </style><ha-card>
       <div class="hd"><ha-icon icon="mdi:account-group"></ha-icon>Osobe<span class="n">u vikendici: ${vEsc(st["sensor.poznati_na_mrezi"] ? st["sensor.poznati_na_mrezi"].state : "–")}</span></div>
+      <datalist id="ipl">${phones.map(([ip, x]) => `<option value="${ip}">${vEsc((x.attributes.mac || "") + " · online " + (x.attributes.online_time || ""))}</option>`).join("")}</datalist>
       ${rows}
+      ${free.length ? `<div class="free">Nepovezani mobiteli na WiFi-ju: ${free.map(([ip, x]) => `<b>${ip}</b> (online ${vEsc(x.attributes.online_time || "?")})`).join(", ")}</div>` : ""}
       <div class="add"><input placeholder="Nova osoba (npr. Tata)"><button>Dodaj</button></div>
-      <div class="hint">Izaberi mobitel svake osobe. Kad se mobitel spoji na WiFi vikendice, osoba je "u vikendici". Mobiteli koriste privatnu WiFi adresu — ako je telefon promijeni, izaberi ga ponovo.</div>
+      <div class="hint">Upiši IP mobitela svake osobe. Da IP ostane isti, na mobitelu za WiFi vikendice stavi <b>Konfiguriraj IP → Ručno</b> (npr. 192.168.10.201) ili isključi "Privatna WiFi adresa".</div>
     </ha-card>`;
     const R = this.shadowRoot;
     R.querySelectorAll(".p").forEach((row) => {
       const p = this._persons.find((x) => x.id === row.dataset.id);
-      row.querySelector("select").addEventListener("change", (ev) => this._setPhone(p, ev.target.value));
+      row.querySelector(".ip").addEventListener("change", (ev) => this._setIp(p.name, ev.target.value.trim()));
       row.querySelector(".del").addEventListener("click", async () => {
-        if (confirm(`Obrisati osobu ${p.name}?`)) { await this._hass.callWS({ type: "person/delete", person_id: p.id }); this._load(); }
+        if (confirm(`Obrisati osobu ${p.name}?`)) { await this._setIp(p.name, ""); await this._hass.callWS({ type: "person/delete", person_id: p.id }); this._load(); }
       });
     });
     const inp = R.querySelector(".add input");
@@ -1131,7 +1134,6 @@ class RipacOsobeCard extends HTMLElement {
     inp.addEventListener("keydown", (e) => { if (e.key === "Enter") add(); });
   }
 }
-
 if (!customElements.get("ripac-osobe-card")) customElements.define("ripac-osobe-card", RipacOsobeCard);
 if (!customElements.get("ripac-vozila-card")) customElements.define("ripac-vozila-card", RipacVozilaCard);
 if (!customElements.get("ripac-security-card")) customElements.define("ripac-security-card", RipacSecurityCard);
