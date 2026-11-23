@@ -735,11 +735,58 @@ class RipacBriefCard extends RipacBase {
   }
 }
 
+class RipacAcChip extends HTMLElement {
+  setConfig(c) {
+    this._c = { entity: "climate.ripac_ripac", ...c };
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+  }
+  set hass(h) {
+    const old = this._h?.states[this._c.entity];
+    this._h = h;
+    if (old !== h.states[this._c.entity] || !this._done) this._render();
+  }
+  _svc(service, data) {
+    this._h.callService("climate", service, { entity_id: this._c.entity, ...data });
+  }
+  _render() {
+    const s = this._h?.states[this._c.entity];
+    if (!s) return;
+    this._done = true;
+    const a = s.attributes, mode = s.state, on = mode !== "off" && mode !== "unavailable";
+    const M = { heat: ["Grije", "#ff7043", "mdi:fire"], cool: ["Hladi", "#4fc3f7", "mdi:snowflake"], dry: ["Suši", "#26a69a", "mdi:water-percent"],
+      fan_only: ["Ventilator", "#b0bec5", "mdi:fan"], auto: ["Auto", "#ab47bc", "mdi:thermostat-auto"], off: ["Ugašena", "#9e9e9e", "mdi:power"] };
+    const [label, col, icon] = M[mode] || [mode, "#9e9e9e", "mdi:air-conditioner"];
+    const t = a.temperature;
+    this.shadowRoot.innerHTML = `<style>
+      .c { display:flex; align-items:center; gap:6px; padding:5px 6px 5px 10px; border-radius:20px; background:rgba(0,0,0,.5);
+        backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); color:#fff; font:600 12.5px Inter,Roboto,sans-serif; white-space:nowrap;
+        box-shadow:${on ? `0 0 0 1.5px ${col}, 0 0 14px ${col}66` : "0 0 0 1px rgba(255,255,255,.15)"}; }
+      .m { display:flex; align-items:center; gap:5px; cursor:pointer; }
+      .m ha-icon { --mdc-icon-size:16px; color:${on ? col : "#bbb"}; }
+      .t { font-size:15px; font-weight:800; min-width:34px; text-align:center; }
+      button { border:0; width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,.14); color:#fff; font:700 16px/1 Inter,Roboto,sans-serif; cursor:pointer; padding:0; }
+      button:active { background:rgba(255,255,255,.3); }
+      .p { background:${on ? col : "rgba(255,255,255,.14)"}; display:flex; align-items:center; justify-content:center; }
+      .p ha-icon { --mdc-icon-size:15px; }
+    </style><div class="c">
+      <div class="m"><ha-icon icon="${icon}"></ha-icon><span>Klima · ${label}</span></div>
+      ${on ? `<button class="dn">−</button><span class="t">${t ?? "–"}°</span><button class="up">+</button>` : ""}
+      <button class="p" title="${on ? "Ugasi" : "Upali grijanje"}"><ha-icon icon="mdi:power"></ha-icon></button></div>`;
+    const R = this.shadowRoot;
+    R.querySelector(".m").onclick = () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: this._c.entity }, bubbles: true, composed: true }));
+    const step = a.target_temp_step || 1;
+    R.querySelector(".dn")?.addEventListener("click", () => this._svc("set_temperature", { temperature: Math.max(a.min_temp || 16, (t || 21) - step) }));
+    R.querySelector(".up")?.addEventListener("click", () => this._svc("set_temperature", { temperature: Math.min(a.max_temp || 32, (t || 21) + step) }));
+    R.querySelector(".p").onclick = () => on ? this._svc("turn_off", {}) : this._svc("set_hvac_mode", { hvac_mode: "heat" });
+  }
+}
+
 if (!customElements.get("ripac-security-card")) customElements.define("ripac-security-card", RipacSecurityCard);
 if (!customElements.get("ripac-una-card")) customElements.define("ripac-una-card", RipacUnaCard);
 if (!customElements.get("ripac-net-card")) customElements.define("ripac-net-card", RipacNetCard);
 if (!customElements.get("ripac-solar-card")) customElements.define("ripac-solar-card", RipacSolarCard);
 if (!customElements.get("ripac-brief-card")) customElements.define("ripac-brief-card", RipacBriefCard);
+if (!customElements.get("ripac-ac-chip")) customElements.define("ripac-ac-chip", RipacAcChip);
 if (!customElements.get("ripac-care-card")) customElements.define("ripac-care-card", RipacCareCard);
 window.customCards = window.customCards || [];
 window.customCards.push(
