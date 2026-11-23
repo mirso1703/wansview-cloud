@@ -906,7 +906,6 @@ class RipacVozilaCard extends HTMLElement {
       } catch (e) { this._img[it.summary] = null; }
     }));
     this._render();
-    this._syncPhones();
   }
   async _svc(service, data) { await this._hass.callService("todo", service, data, { entity_id: this._c.entity }); }
   async _save(uid) {
@@ -967,8 +966,7 @@ class RipacVozilaCard extends HTMLElement {
         <div class="grid">
           <label>Model<input data-k="model" value="${vEsc(o.model)}" placeholder="npr. VW Golf 7"></label>
           <label>Boja<input data-k="boja" value="${vEsc(o.boja)}" placeholder="boja"></label>
-          <label>Vlasnik<input data-k="vlasnik" value="${vEsc(o.vlasnik)}" placeholder="čije je auto?"></label>
-          <label>Mobitel<select data-k="mobitel">${this._phoneOpts(o.mobitel)}</select></label>
+          <label class="wide">Vlasnik<input data-k="vlasnik" list="osobe" value="${vEsc(o.vlasnik)}" placeholder="izaberi osobu ili upiši"></label>
         </div>
         ${o["viđeno"] ? `<div class="seen"><ha-icon icon="mdi:eye-outline"></ha-icon>${vEsc(o["viđeno"])}</div>` : ""}
       </div>`;
@@ -1005,6 +1003,7 @@ class RipacVozilaCard extends HTMLElement {
       .new button { border:0; border-radius:10px; padding:8px 14px; font-size:14px; cursor:pointer; } .ok { background:var(--primary-color); color:#fff; } .no { background:rgba(127,127,127,.2); color:var(--primary-text-color); }
     </style><ha-card>
       <div class="hd"><ha-icon icon="mdi:car-multiple"></ha-icon>${vEsc(this._c.title)}<span class="n">${items.length} vozila${nUn ? ` · ${nUn} nepoznato` : ""}</span></div>
+      <datalist id="osobe">${Object.values(this._hass.states).filter((x) => x.entity_id.startsWith("person.")).map((x) => `<option value="${vEsc(x.attributes.friendly_name)}">`).join("")}</datalist>
       ${rows}
       ${this._adding ? `<div class="new">
           <input data-n="tab" class="wide" placeholder="Tablica (npr. A12K345)" style="text-transform:uppercase">
@@ -1028,6 +1027,96 @@ class RipacVozilaCard extends HTMLElement {
   }
 }
 
+
+/* ---------- Osobe: HA person + mobitel na WiFi-ju ---------- */
+class RipacOsobeCard extends HTMLElement {
+  setConfig(c) { this._c = c || {}; if (!this.shadowRoot) this.attachShadow({ mode: "open" }); }
+  getCardSize() { return 3; }
+  set hass(h) {
+    this._hass = h;
+    const key = Object.values(h.states).filter((x) => /^(person|device_tracker)\./.test(x.entity_id)).map((x) => x.entity_id + x.state).join("|");
+    const a = this.shadowRoot && this.shadowRoot.activeElement;
+    if (key !== this._key && !(a && /INPUT|SELECT/.test(a.tagName))) { this._key = key; this._load(); }
+  }
+  async _load() {
+    try { const r = await this._hass.callWS({ type: "person/list" }); this._persons = r.storage || []; } catch (e) { this._persons = []; }
+    this._render();
+  }
+  _phones() {
+    const st = this._hass.states;
+    return Object.keys(st).filter((e) => {
+      if (!e.startsWith("device_tracker.")) return false;
+      const a = st[e].attributes;
+      if (a.source_type !== "router") return false;
+      const b = parseInt(String(a.mac || "").slice(0, 2), 16);
+      return /mobitel|phone|iphone|android|galaxy|pixel/i.test(e + (a.hostname || "")) || (!isNaN(b) && (b & 2));
+    });
+  }
+  _opts(cur, used) {
+    const st = this._hass.states;
+    const list = this._phones(); if (cur && !list.includes(cur)) list.push(cur);
+    return `<option value="">— bez mobitela —</option>` + list.filter((e) => e === cur || !used.has(e)).map((e) => {
+      const s = st[e]; const nm = s ? (s.attributes.friendly_name || e) : e;
+      return `<option value="${e}" ${e === cur ? "selected" : ""}>${vEsc(nm)}${s && s.state === "home" ? " · sada na WiFi-ju" : ""}</option>`;
+    }).join("");
+  }
+  async _setPhone(p, tracker) {
+    const gps = (p.device_trackers || []).filter((t) => !this._phones().includes(t) && !(this._hass.states[t] && this._hass.states[t].attributes.source_type === "router"));
+    await this._hass.callWS({ type: "person/update", person_id: p.id, name: p.name, user_id: p.user_id || null,
+      device_trackers: tracker ? [...gps, tracker] : gps, picture: p.picture || null });
+    await this._load();
+  }
+  _render() {
+    if (!this._hass) return;
+    const st = this._hass.states;
+    const used = new Set(); (this._persons || []).forEach((p) => (p.device_trackers || []).forEach((t) => used.add(t)));
+    const rows = (this._persons || []).map((p) => {
+      const ps = st["person." + p.id] || Object.values(st).find((x) => x.entity_id.startsWith("person.") && x.attributes.id === p.id);
+      const home = ps && ps.state === "home";
+      const ph = (p.device_trackers || []).find((t) => st[t] && st[t].attributes.source_type === "router") || "";
+      const gps = (p.device_trackers || []).filter((t) => t !== ph);
+      return `<div class="p ${home ? "home" : ""}" data-id="${p.id}">
+        <div class="av">${vEsc(p.name.slice(0, 1).toUpperCase())}</div>
+        <div class="nm"><b>${vEsc(p.name)}</b><span>${home ? "🟢 u vikendici" : "⚪ nije tu"}${gps.length ? " · GPS" : ""}</span></div>
+        <select data-ph>${this._opts(ph, used)}</select>
+        <button class="del" title="Obriši osobu"><ha-icon icon="mdi:trash-can-outline"></ha-icon></button>
+      </div>`;
+    }).join("");
+    this.shadowRoot.innerHTML = `<style>
+      ha-card { padding:14px 14px 12px; }
+      .hd { display:flex; align-items:center; gap:8px; font-size:16px; font-weight:600; margin-bottom:10px; }
+      .hd ha-icon { --mdc-icon-size:22px; color:var(--primary-color); } .hd .n { margin-left:auto; font-size:12px; font-weight:500; color:var(--secondary-text-color); }
+      .p { display:grid; grid-template-columns:36px minmax(0,1fr) minmax(0,1.3fr) auto; align-items:center; gap:10px; padding:8px 0; border-top:1px solid rgba(127,127,127,.12); }
+      .p:first-of-type { border-top:0; }
+      .av { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; background:rgba(127,127,127,.2); }
+      .p.home .av { background:#4caf50; color:#fff; }
+      .nm { display:flex; flex-direction:column; min-width:0; } .nm b { font-size:14px; } .nm span { font-size:11.5px; color:var(--secondary-text-color); }
+      select, .add input { font-size:13px; color:var(--primary-text-color); background:rgba(127,127,127,.12); border:1px solid transparent; border-radius:9px; padding:7px 8px; min-width:0; width:100%; box-sizing:border-box; }
+      .del { background:none; border:0; color:var(--secondary-text-color); cursor:pointer; } .del ha-icon { --mdc-icon-size:18px; }
+      .add { display:flex; gap:8px; margin-top:10px; } .add button { border:0; border-radius:10px; padding:8px 14px; background:var(--primary-color); color:#fff; font-size:14px; cursor:pointer; }
+      .hint { font-size:11.5px; color:var(--secondary-text-color); margin-top:8px; line-height:1.4; }
+    </style><ha-card>
+      <div class="hd"><ha-icon icon="mdi:account-group"></ha-icon>Osobe<span class="n">u vikendici: ${vEsc(st["sensor.poznati_na_mrezi"] ? st["sensor.poznati_na_mrezi"].state : "–")}</span></div>
+      ${rows}
+      <div class="add"><input placeholder="Nova osoba (npr. Tata)"><button>Dodaj</button></div>
+      <div class="hint">Izaberi mobitel svake osobe. Kad se mobitel spoji na WiFi vikendice, osoba je "u vikendici". Mobiteli koriste privatnu WiFi adresu — ako je telefon promijeni, izaberi ga ponovo.</div>
+    </ha-card>`;
+    const R = this.shadowRoot;
+    R.querySelectorAll(".p").forEach((row) => {
+      const p = this._persons.find((x) => x.id === row.dataset.id);
+      row.querySelector("select").addEventListener("change", (ev) => this._setPhone(p, ev.target.value));
+      row.querySelector(".del").addEventListener("click", async () => {
+        if (confirm(`Obrisati osobu ${p.name}?`)) { await this._hass.callWS({ type: "person/delete", person_id: p.id }); this._load(); }
+      });
+    });
+    const inp = R.querySelector(".add input");
+    const add = async () => { const n = inp.value.trim(); if (!n) return; await this._hass.callWS({ type: "person/create", name: n }); inp.value = ""; this._load(); };
+    R.querySelector(".add button").addEventListener("click", add);
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") add(); });
+  }
+}
+
+if (!customElements.get("ripac-osobe-card")) customElements.define("ripac-osobe-card", RipacOsobeCard);
 if (!customElements.get("ripac-vozila-card")) customElements.define("ripac-vozila-card", RipacVozilaCard);
 if (!customElements.get("ripac-security-card")) customElements.define("ripac-security-card", RipacSecurityCard);
 if (!customElements.get("ripac-una-card")) customElements.define("ripac-una-card", RipacUnaCard);
