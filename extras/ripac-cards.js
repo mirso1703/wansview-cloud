@@ -760,31 +760,40 @@ class RipacAcChip extends HTMLElement {
     const modes = ["heat", "cool", "dry", "fan_only"].filter((m) => (a.hvac_modes || []).includes(m));
     const fanTxt = { auto: "auto", low: "1", middle_low: "2", medium: "3", middle_high: "4", high: "5" }[a.fan_mode] || a.fan_mode || "";
     this.shadowRoot.innerHTML = `<style>
-      .c { display:flex; flex-direction:column; gap:7px; padding:${on ? 8 : 4}px; border-radius:18px; background:rgba(0,0,0,.55);
-        backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); color:#fff; font:600 12px Inter,Roboto,sans-serif;
-        box-shadow:${on ? `0 0 0 1.5px ${col}, 0 0 16px ${col}55` : "0 0 0 1px rgba(255,255,255,.15)"}; }
-      .r { display:flex; align-items:center; gap:6px; }
-      .ttl { flex:1; display:flex; align-items:center; gap:5px; padding-left:4px; cursor:pointer; white-space:nowrap; }
-      .ttl ha-icon { --mdc-icon-size:16px; color:${col}; }
-      button { border:0; height:30px; min-width:30px; border-radius:15px; background:rgba(255,255,255,.12); color:#fff; font:700 15px/1 Inter,Roboto,sans-serif;
-        cursor:pointer; padding:0 8px; display:flex; align-items:center; justify-content:center; gap:3px; }
-      button:active { transform:scale(.94); }
+      .c { display:flex; align-items:center; gap:4px; padding:4px; border-radius:22px; background:rgba(0,0,0,.55);
+        backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); color:#fff; font:600 12.5px Inter,Roboto,sans-serif; white-space:nowrap;
+        box-shadow:${on ? `0 0 0 1.5px ${col}, 0 0 14px ${col}55` : "0 0 0 1px rgba(255,255,255,.15)"}; }
+      .ttl { display:flex; align-items:center; gap:5px; padding:0 8px 0 8px; height:32px; border-radius:16px; cursor:pointer; }
+      .ttl:hover { background:rgba(255,255,255,.08); }
+      .ttl ha-icon { --mdc-icon-size:17px; color:${col}; }
+      .sep { width:1px; height:20px; background:rgba(255,255,255,.15); margin:0 2px; }
+      button { border:0; width:32px; height:32px; border-radius:50%; background:transparent; color:#fff; font:700 18px/1 Inter,Roboto,sans-serif;
+        cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center; }
+      button:hover { background:rgba(255,255,255,.12); }
+      button:active { transform:scale(.92); }
       button ha-icon { --mdc-icon-size:17px; }
-      .m.on { background:var(--mc); box-shadow:0 0 10px var(--mc); }
-      .pw { background:${on ? col : "rgba(255,255,255,.12)"}; }
-      .t { font-size:18px; font-weight:800; min-width:42px; text-align:center; }
-      .fan { font-size:11px; padding:0 9px; }
+      .pw { background:${on ? col : "rgba(255,255,255,.14)"}; }
+      .t { font-size:16px; font-weight:800; min-width:34px; text-align:center; }
     </style><div class="c">
-      <div class="r"><div class="ttl"><ha-icon icon="${on && M[mode] ? M[mode][2] : "mdi:air-conditioner"}"></ha-icon>Klima · ${on && M[mode] ? M[mode][0] : "ugašena"}</div>
-        <button class="pw" title="${on ? "Ugasi" : "Upali"}"><ha-icon icon="mdi:power"></ha-icon></button></div>
-      ${on ? `<div class="r">${modes.map((m) => `<button class="m ${mode === m ? "on" : ""}" data-m="${m}" style="--mc:${M[m][1]}" title="${M[m][0]}"><ha-icon icon="${M[m][2]}"></ha-icon></button>`).join("")}</div>
-      <div class="r"><button class="dn">−</button><span class="t">${t ?? "–"}°</span><button class="up">+</button>
-        <button class="fan" title="Ventilator"><ha-icon icon="mdi:fan"></ha-icon>${fanTxt}</button></div>` : ""}
+      <div class="ttl" title="${on ? "Dodirni za promjenu režima" : "Klima"}"><ha-icon icon="${on && M[mode] ? M[mode][2] : "mdi:air-conditioner"}"></ha-icon>${on && M[mode] ? M[mode][0] : "Klima · ugašena"}</div>
+      ${on ? `<div class="sep"></div><button class="dn">−</button><span class="t">${t ?? "–"}°</span><button class="up">+</button><div class="sep"></div>` : ""}
+      <button class="pw" title="${on ? "Ugasi" : "Upali"}"><ha-icon icon="mdi:power"></ha-icon></button>
     </div>`;
     const R = this.shadowRoot;
     const step = a.target_temp_step || 1;
     const sane = (m) => (m === "cool" ? (t && t >= 22 && t <= 28 ? t : 24) : m === "heat" ? (t && t >= 16 && t <= 24 ? t : 21) : t || 22);
-    R.querySelector(".ttl").onclick = () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: this._c.entity }, bubbles: true, composed: true }));
+    const more = () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: this._c.entity }, bubbles: true, composed: true }));
+    const ttl = R.querySelector(".ttl");
+    let lp;
+    ttl.addEventListener("pointerdown", () => (lp = setTimeout(() => ((lp = null), more()), 600)));
+    ttl.addEventListener("pointerleave", () => clearTimeout(lp));
+    ttl.addEventListener("pointerup", () => {
+      if (!lp) return;
+      clearTimeout(lp);
+      if (!on) return more();
+      const i = modes.indexOf(mode);
+      setMode(modes[(i + 1) % modes.length]);
+    });
     if (R.querySelector(".dn")) R.querySelector(".dn").onclick = () => this._svc("set_temperature", { temperature: Math.max(a.min_temp || 16, (t || 21) - step) });
     if (R.querySelector(".up")) R.querySelector(".up").onclick = () => this._svc("set_temperature", { temperature: Math.min(a.max_temp || 32, (t || 21) + step) });
     const setMode = async (m) => {
@@ -795,13 +804,7 @@ class RipacAcChip extends HTMLElement {
       }
     };
     R.querySelector(".pw").onclick = () => (on ? this._svc("set_hvac_mode", { hvac_mode: "off" }) : setMode("heat"));
-    R.querySelectorAll(".m").forEach((b) => (b.onclick = () => {
-      const m = b.dataset.m;
-      if (m === mode) return;
-      setMode(m);
-    }));
-    const fans = a.fan_modes || [];
-    R.querySelector(".fan")?.addEventListener("click", () => this._svc("set_fan_mode", { fan_mode: fans[(fans.indexOf(a.fan_mode) + 1) % fans.length] }));
+
   }
 }
 
@@ -857,7 +860,7 @@ window.customCards.push(
     [/^(.*) · prije (.+)$/, (m, a, b) => `${EXACT[a] || a} · ${b} ago`], [/^prije (.+)$/, "$1 ago"],
     [/^(\S[^·]*?) · $/, (m, a) => `${EXACT[a.trim()] || a} · `], [/Solarne kamere/g, "Solar cameras"], [/^Mjesečni/, "Monthly"],
     [/^Vlaga /, "Humidity "], [/^Potrošnja /, "Load "], [/^Bojler /, "Boiler "],
-    [/^Klima · ugašena$/, "AC · off"], [/^Klima · Grije$/, "AC · heating"], [/^Klima · Hladi$/, "AC · cooling"], [/^Klima · Suši$/, "AC · drying"], [/^Klima · Ventilator$/, "AC · fan"],
+    [/^Klima · ugašena$/, "AC · off"], [/^Grije$/, "Heating"], [/^Hladi$/, "Cooling"], [/^Suši$/, "Drying"], [/^Ventilator$/, "Fan"],
     [/Niko nije u kući/g, "Nobody is home"], [/ · TPanel naoružan/g, " · TPanel armed"], [/kamere javljaju pokret/g, "cameras report motion"],
     [/Čuvanje je isključeno/g, "Guarding is off"], [/alarmi pauzirani/g, "alarms paused"], [/Alarmi i obavijesti o kretanju su pauzirani/g, "Alarms and motion alerts are paused"],
     [/put suh i prohodan/g, "road dry and passable"], [/voda na putu/g, "water on the road"], [/put poplavljen/g, "road flooded"], [/voda na placevima/g, "water on the plots"],
