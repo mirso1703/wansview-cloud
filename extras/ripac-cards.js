@@ -275,7 +275,7 @@ class RipacUnaCard extends RipacBase {
     const fut = pred ? pred.pts : [];
     const vals = pts.map((p) => p[1]).concat(fut.map((p) => p[1]));
     const lo = Math.floor((Math.min(...vals) - 10) / 10) * 10, hi = Math.max(Math.ceil((Math.max(...vals) + 10) / 10) * 10, 210);
-    const W = 320, H = 120, top = 8, bot = 22, left = 28;
+    const W = Math.max(280, Math.round(this._cw || 320)), H = 130, top = 8, bot = 22, left = 26;
     const x = (t) => left + ((t - t0) / span) * (W - left);
     const y = (v) => top + (1 - (v - lo) / (hi - lo)) * (H - top - bot);
     const nowX = x(Date.now());
@@ -285,8 +285,7 @@ class RipacUnaCard extends RipacBase {
     const grid = [];
     for (let v = lo; v <= hi; v += (hi - lo) > 80 ? 20 : 10)
       grid.push(`<line x1="${left}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(127,127,127,.12)"/><text x="${left - 4}" y="${y(v) + 3}" text-anchor="end" font-size="8.5" fill="var(--secondary-text-color)">${v}</text>`);
-    const thr = (v, col, lab) => v >= lo && v <= hi ? `<line x1="${left}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-width="1" stroke-dasharray="4 3" opacity=".8"/>
-      <rect x="${left + 4}" y="${y(v) - 7}" rx="3" width="${lab.length * 4.6 + 8}" height="12" fill="${col}"/><text x="${left + 8}" y="${y(v) + 2}" font-size="8" font-weight="700" fill="#111">${lab}</text>` : "";
+    const thr = (v, col) => v >= lo && v <= hi ? `<line x1="${left}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-width="1.2" stroke-dasharray="4 3" opacity=".85"/>` : "";
     // rain bars for coming days
     const bars = pred ? pred.days.map((mm, i) => {
       if (!mm) return "";
@@ -297,13 +296,13 @@ class RipacUnaCard extends RipacBase {
     const pkCol = pk ? (pk[1] >= 200 ? "#e53935" : pk[1] >= 180 ? "#ffb300" : "#64b5f6") : "";
     const xl = [[-48, "-48 h"], [-24, "-24 h"], [0, "sada"], [24, "+1 dan"], [48, "+2 dana"], [72, "+3 dana"]]
       .map(([hh, t]) => `<text x="${x(Date.now() + hh * 3600e3)}" y="${H - 6}" text-anchor="${hh === -48 ? "start" : hh === 72 ? "end" : "middle"}" font-size="8.5" fill="${hh === 0 ? "var(--primary-text-color)" : "var(--secondary-text-color)"}" font-weight="${hh === 0 ? 700 : 400}">${t}</text>`).join("");
-    return `<svg class="spark" viewBox="0 0 ${W} ${H}" style="height:150px">
+    return `<svg class="spark" viewBox="0 0 ${W} ${H}" style="height:${H}px">
       <defs><linearGradient id="ug" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".4"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient>
         <linearGradient id="fg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#64b5f6" stop-opacity=".22"/><stop offset="1" stop-color="#64b5f6" stop-opacity="0"/></linearGradient></defs>
       ${grid.join("")}
       <rect x="${nowX}" y="${top}" width="${W - nowX}" height="${base - top}" fill="rgba(127,127,127,.06)"/>
       ${bars}
-      ${thr(180, "#ffb300", "voda na putu 180")}${thr(200, "#e53935", "put plavi 200")}${thr(250, "#b71c1c", "placevi 250")}
+      ${thr(180, "#ffb300")}${thr(200, "#e53935")}${thr(250, "#b71c1c")}
       <path d="${past}L${nowX},${base}L${x(pts.find((p) => p[0] >= t0)?.[0] ?? t0)},${base}Z" fill="url(#ug)"/>
       <path d="${past}" fill="none" stroke="${c}" stroke-width="2.2" stroke-linejoin="round"/>
       ${futLine ? `<path d="${futLine}L${x(fut[fut.length - 1][0])},${base}L${nowX},${base}Z" fill="url(#fg)"/><path d="${futLine}" fill="none" stroke="#64b5f6" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ""}
@@ -313,7 +312,7 @@ class RipacUnaCard extends RipacBase {
         <text x="${x(pk[0])}" y="${y(pk[1]) - 10}" text-anchor="middle" font-size="8.5" font-weight="800" fill="#111">~${Math.round(pk[1])} cm</text>` : ""}
       ${xl}
     </svg>
-    <div class="legend2"><span><i style="background:${c}"></i>izmjereno</span><span><i class="d"></i>procjena po prognozi kiše</span><span><i style="background:#42a5f5;opacity:.5"></i>kiša</span></div>`;
+    <div class="legend2"><span><i style="background:${c}"></i>izmjereno</span><span><i class="d"></i>procjena po prognozi kiše</span><span><i style="background:#42a5f5;opacity:.5"></i>kiša</span><span><i style="background:#ffb300"></i>180 voda na putu</span><span><i style="background:#e53935"></i>200 put plavi</span></div>`;
   }
   // rough expectation for the next 2-3 days from forecast rain, current trend and upstream stations
   _expect(l, tr, wx, prog, pred) {
@@ -415,6 +414,12 @@ class RipacUnaCard extends RipacBase {
       ${wrows ? `<div class="fc2" style="margin-top:8px">${wrows}</div>` : ""}
       ${ups ? `<div class="lbl">Uzvodno</div><div class="up">${ups}</div>` : ""}
     </ha-card>`;
+    const sv = this.shadowRoot.querySelector("svg.spark");
+    if (sv) {
+      const w = sv.getBoundingClientRect().width;
+      if (w > 0 && Math.abs(w - (this._cw || 0)) > 4) { this._cw = w; requestAnimationFrame(() => this._render()); return; }
+      if (!this._ro) { this._ro = new ResizeObserver(() => { const nw = this.shadowRoot.querySelector("svg.spark")?.getBoundingClientRect().width; if (nw && Math.abs(nw - (this._cw || 0)) > 4) { this._cw = nw; this._render(); } }); this._ro.observe(this); }
+    }
     this.shadowRoot.querySelector(".big").addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: UNA }, bubbles: true, composed: true })));
     this.shadowRoot.querySelector(".wk")?.addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: "weather.home" }, bubbles: true, composed: true })));
   }
