@@ -787,12 +787,18 @@ class RipacAcChip extends HTMLElement {
     R.querySelector(".ttl").onclick = () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: this._c.entity }, bubbles: true, composed: true }));
     if (R.querySelector(".dn")) R.querySelector(".dn").onclick = () => this._svc("set_temperature", { temperature: Math.max(a.min_temp || 16, (t || 21) - step) });
     if (R.querySelector(".up")) R.querySelector(".up").onclick = () => this._svc("set_temperature", { temperature: Math.min(a.max_temp || 32, (t || 21) + step) });
-    R.querySelector(".pw").onclick = () => (on ? this._svc("turn_off", {}) : this._svc("set_temperature", { hvac_mode: "heat", temperature: sane("heat") }));
+    const setMode = async (m) => {
+      await this._h.callService("climate", "set_hvac_mode", { entity_id: this._c.entity, hvac_mode: m });
+      if (m === "heat" || m === "cool") {
+        const want = sane(m);
+        if (want !== t) setTimeout(() => this._svc("set_temperature", { temperature: want }), 1500);
+      }
+    };
+    R.querySelector(".pw").onclick = () => (on ? this._svc("set_hvac_mode", { hvac_mode: "off" }) : setMode("heat"));
     R.querySelectorAll(".m").forEach((b) => (b.onclick = () => {
       const m = b.dataset.m;
       if (m === mode) return;
-      if (m === "heat" || m === "cool") this._svc("set_temperature", { hvac_mode: m, temperature: sane(m) });
-      else this._svc("set_hvac_mode", { hvac_mode: m });
+      setMode(m);
     }));
     const fans = a.fan_modes || [];
     R.querySelector(".fan")?.addEventListener("click", () => this._svc("set_fan_mode", { fan_mode: fans[(fans.indexOf(a.fan_mode) + 1) % fans.length] }));
