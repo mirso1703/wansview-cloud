@@ -107,7 +107,6 @@ const TOGGLES = [
   { e: "automation.nocu_ugasi_vanjska_svjetla_bez_pokreta", n: "Noćno gašenje", on: "Gasi vanjska svjetla", off: "Isključeno", i: "mdi:weather-night", c: "#8e24aa" },
   { e: "input_boolean.vodostaj_na_zakljucanom_ekranu", n: "Una na ekranu", on: "Live Activity", off: "Isključeno", i: "mdi:cellphone-lock", c: "#1e88e5" },
   { e: "input_boolean.vikendica_na_zakljucanom_ekranu", n: "Kuća na ekranu", on: "Live Activity", off: "Isključeno", i: "mdi:cellphone-information", c: "#3949ab" },
-  { e: "input_boolean.stednja_solarnih_kamera", n: "Argus štedi", on: "Odmara dok su poznati tu", off: "Uvijek čuva", i: "mdi:solar-power", c: "#f9a825" },
 ];
 const MUTE = "input_boolean.kamere_utisane", MUTE_WHY = "input_text.kamere_utisane_razlog";
 const PRESENCE = "binary_sensor.presence_senzor_sonoff_a480133cc3_occupancy";
