@@ -1050,8 +1050,8 @@ class RipacOsobeCard extends HTMLElement {
   getCardSize() { return 3; }
   set hass(h) {
     this._hass = h;
-    const key = Object.values(h.states).filter((x) => /^(person|device_tracker)\./.test(x.entity_id) || x.entity_id === "input_text.osobe_ip")
-      .map((x) => x.entity_id + x.state + (x.attributes.ip || "")).join("|");
+    const key = Object.values(h.states).filter((x) => /^(person|device_tracker)\./.test(x.entity_id) || x.entity_id === "input_text.osobe_mac")
+      .map((x) => x.entity_id + x.state + (x.attributes.ip || "") + (x.attributes.mac || "")).join("|");
     const a = this.shadowRoot && this.shadowRoot.activeElement;
     if (key !== this._key && !(a && /INPUT|SELECT/.test(a.tagName))) { this._key = key; this._load(); }
   }
@@ -1059,57 +1059,65 @@ class RipacOsobeCard extends HTMLElement {
     try { const r = await this._hass.callWS({ type: "person/list" }); this._persons = r.storage || []; } catch (e) { this._persons = []; }
     this._render();
   }
-  _ips() { try { return JSON.parse(this._hass.states["input_text.osobe_ip"].state) || {}; } catch (e) { return {}; } }
-  _live() {
+  _macs() { try { return JSON.parse(this._hass.states["input_text.osobe_mac"].state) || {}; } catch (e) { return {}; } }
+  _norm(m) { return String(m || "").trim().toUpperCase().replace(/-/g, ":"); }
+  /* svi router trackeri po MAC-u (i oni koji nisu na WiFi-ju, da znamo zadnji IP) */
+  _byMac() {
     const m = {};
     Object.values(this._hass.states).forEach((x) => {
       const a = x.attributes;
-      if (x.entity_id.startsWith("device_tracker.") && a.source_type === "router" && x.state === "home" && a.ip) m[a.ip] = x;
+      if (x.entity_id.startsWith("device_tracker.") && a.source_type === "router" && a.mac) m[this._norm(a.mac)] = x;
     });
     return m;
   }
-  _ipOpts(cur, phones, ips) {
-    const live = this._live();
+  _t(x) { return String(x.attributes.online_time || "").replace(/^0 Day /, "").replace(/:\d\d$/, ""); }
+  _opts(cur, phones, macs) {
+    const all = this._byMac();
     let o = `<option value="">— bez mobitela —</option>`;
-    if (cur && !phones.some(([ip]) => ip === cur)) o += `<option value="${vEsc(cur)}" selected>${vEsc(cur)}${live[cur] ? " · na WiFi-ju" : " · nije na WiFi-ju"}</option>`;
-    phones.forEach(([ip, x]) => {
-      const taken = Object.entries(ips).find(([n, v]) => v === ip && v !== cur);
-      if (taken) return;
-      const t = String(x.attributes.online_time || "").replace(/^0 Day /, "").replace(/:\d\d$/, "");
-      o += `<option value="${ip}" ${ip === cur ? "selected" : ""}>${ip} · na WiFi-ju ${vEsc(t)}</option>`;
+    if (cur && !phones.some(([mac]) => mac === cur)) {
+      const x = all[cur];
+      const ip = x && x.attributes.ip ? x.attributes.ip : cur;
+      o += `<option value="${vEsc(cur)}" selected>${vEsc(ip)} · nije na WiFi-ju</option>`;
+    }
+    phones.forEach(([mac, x]) => {
+      if (Object.values(macs).some((v) => v === mac && v !== cur)) return;
+      o += `<option value="${mac}" ${mac === cur ? "selected" : ""}>${vEsc(x.attributes.ip || mac)} · na WiFi-ju ${vEsc(this._t(x))}</option>`;
     });
-    return o + `<option value="__manual">✏️ Upiši IP ručno…</option>`;
+    return o + `<option value="__manual">✏️ Upiši MAC ručno…</option>`;
   }
-  async _setIp(name, ip) {
-    const m = this._ips();
-    if (ip) m[name] = ip; else delete m[name];
+  async _setMac(name, mac) {
+    const m = this._macs();
+    mac = this._norm(mac);
+    if (mac) m[name] = mac; else delete m[name];
     const v = JSON.stringify(m);
     if (v.length > 255) { alert("Previše osoba za jedno polje (255 znakova)."); return; }
-    await this._hass.callService("input_text", "set_value", { entity_id: "input_text.osobe_ip", value: v });
+    await this._hass.callService("input_text", "set_value", { entity_id: "input_text.osobe_mac", value: v });
   }
   _render() {
     if (!this._hass) return;
-    const st = this._hass.states, ips = this._ips(), live = this._live();
-    const phones = Object.entries(live).filter(([ip, x]) => {
-      const b = parseInt(String(x.attributes.mac || "").slice(0, 2), 16);
-      return /mobitel|phone|iphone|android|galaxy|pixel/i.test(x.entity_id + (x.attributes.hostname || "")) || (!isNaN(b) && (b & 2));
+    const st = this._hass.states, macs = this._macs(), all = this._byMac();
+    const live = Object.fromEntries(Object.entries(all).filter(([, x]) => x.state === "home"));
+    const phones = Object.entries(live).filter(([mac, x]) => {
+      const b = parseInt(mac.slice(0, 2), 16);
+      return /mobitel|phone|iphone|android|galaxy|pixel/i.test(x.entity_id + (x.attributes.hostname || "")) || (!isNaN(b) && (b & 2))
+        || Object.values(macs).includes(mac);
     });
     const rows = (this._persons || []).map((p) => {
       const ps = Object.values(st).find((x) => x.entity_id.startsWith("person.") && x.attributes.id === p.id);
-      const ip = ips[p.name] || "";
-      const onWifi = ip && live[ip];
+      const mac = macs[p.name] || "";
+      const onWifi = mac && live[mac];
       const home = (ps && ps.state === "home") || onWifi;
-      const src = onWifi ? "na WiFi-ju" : ps && ps.state === "home" ? "po GPS-u" : "";
+      const src = onWifi ? `na WiFi-ju · ${onWifi.attributes.ip || ""}` : ps && ps.state === "home" ? "po GPS-u" : "";
       return `<div class="p ${home ? "home" : ""}" data-id="${p.id}" data-name="${vEsc(p.name)}">
         <div class="av">${vEsc(p.name.slice(0, 1).toUpperCase())}</div>
-        <div class="nm"><b>${vEsc(p.name)}</b><span>${home ? `🟢 u vikendici · ${src}` : "⚪ nije tu"}</span></div>
+        <div class="nm"><b>${vEsc(p.name)}</b><span>${home ? `🟢 u vikendici · ${vEsc(src)}` : "⚪ nije tu"}</span></div>
         <div class="ipw">${this._manual && this._manual === p.id
-          ? `<input class="ip" inputmode="decimal" value="${vEsc(ip)}" placeholder="192.168.10.x">`
-          : `<select class="ips">${this._ipOpts(ip, phones, ips)}</select>`}</div>
+          ? `<input class="ip" value="${vEsc(mac)}" placeholder="AA:BB:CC:DD:EE:FF" autocapitalize="characters">`
+          : `<select class="ips">${this._opts(mac, phones, macs)}</select>`}</div>
         <button class="del" title="Obriši osobu"><ha-icon icon="mdi:trash-can-outline"></ha-icon></button>
       </div>`;
     }).join("");
-    const free = phones.filter(([ip]) => !Object.values(ips).includes(ip));
+    const free = phones.filter(([mac]) => !Object.values(macs).includes(mac));
     this.shadowRoot.innerHTML = `<style>
       ha-card { padding:14px 14px 12px; }
       .hd { display:flex; align-items:center; gap:8px; font-size:16px; font-weight:600; margin-bottom:10px; }
@@ -1129,9 +1137,9 @@ class RipacOsobeCard extends HTMLElement {
     </style><ha-card>
       <div class="hd"><ha-icon icon="mdi:account-group"></ha-icon>Osobe<span class="n">u vikendici: ${vEsc(st["sensor.poznati_na_mrezi"] ? st["sensor.poznati_na_mrezi"].state : "–")}</span></div>
       ${rows}
-      ${free.length ? `<div class="free">Nepovezani mobiteli na WiFi-ju: ${free.map(([ip, x]) => `<b>${ip}</b> (online ${vEsc(x.attributes.online_time || "?")})`).join(", ")}</div>` : ""}
+      ${free.length ? `<div class="free">Nepovezani mobiteli na WiFi-ju: ${free.map(([mac, x]) => `<b>${vEsc(x.attributes.ip || mac)}</b> (online ${vEsc(this._t(x) || "?")})`).join(", ")}</div>` : ""}
       <div class="add"><input placeholder="Nova osoba (npr. Tata)"><button>Dodaj</button></div>
-      <div class="hint">Upiši IP mobitela svake osobe. Da IP ostane isti, na mobitelu za WiFi vikendice stavi <b>Konfiguriraj IP → Ručno</b> (npr. 192.168.10.201) ili isključi "Privatna WiFi adresa".</div>
+      <div class="hint">Izaberi mobitel svake osobe po IP-u koji trenutno ima. Veza se pamti po MAC adresi mobitela, pa ostaje i kad ruter dodijeli novi IP. Na iPhoneu za WiFi vikendice drži "Privatna WiFi adresa" na <b>Fiksna</b> (ili isključenu), da MAC ostane isti.</div>
     </ha-card>`;
     const R = this.shadowRoot;
     R.querySelectorAll(".p").forEach((row) => {
@@ -1139,16 +1147,16 @@ class RipacOsobeCard extends HTMLElement {
       const sel = row.querySelector(".ips");
       if (sel) sel.addEventListener("change", (ev) => {
         if (ev.target.value === "__manual") { this._manual = p.id; this._render(); const i = this.shadowRoot.querySelector(".ip"); if (i) i.focus(); return; }
-        this._setIp(p.name, ev.target.value);
+        this._setMac(p.name, ev.target.value);
       });
       const ipi = row.querySelector(".ip");
       if (ipi) {
-        const done = () => { this._manual = null; this._setIp(p.name, ipi.value.trim()); };
+        const done = () => { this._manual = null; this._setMac(p.name, ipi.value); };
         ipi.addEventListener("change", done);
         ipi.addEventListener("keydown", (e) => { if (e.key === "Enter") ipi.blur(); });
       }
       row.querySelector(".del").addEventListener("click", async () => {
-        if (confirm(`Obrisati osobu ${p.name}?`)) { await this._setIp(p.name, ""); await this._hass.callWS({ type: "person/delete", person_id: p.id }); this._load(); }
+        if (confirm(`Obrisati osobu ${p.name}?`)) { await this._setMac(p.name, ""); await this._hass.callWS({ type: "person/delete", person_id: p.id }); this._load(); }
       });
     });
     const inp = R.querySelector(".add input");
