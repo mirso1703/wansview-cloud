@@ -159,10 +159,10 @@ class RipacSecurityCard extends RipacBase {
       .r.on .sw { background:var(--c); } .r.on .sw::after { left:14px; }
       @media (max-width:420px) { .cols { grid-template-columns:1fr; } }
     </style><ha-card>
-      <div class="hd"><div class="shield" style="--c:${s.c}"><ha-icon icon="${s.i}"></ha-icon></div>
+      ${this._config.toggles_only ? "" : `<div class="hd"><div class="shield" style="--c:${s.c}"><ha-icon icon="${s.i}"></ha-icon></div>
         <div><div class="ttl">${esc(s.t)}</div><div class="sub">${esc(s.s)}</div></div></div>
-      <div class="prot2">${prot}</div>
-      <div class="cols" style="margin-top:12px">
+      <div class="prot2">${prot}</div>`}
+      <div class="cols" style="margin-top:${this._config.toggles_only ? 0 : 12}px">
         <div><div class="gt">Čuvanje</div><div class="grp">${g1}</div></div>
         <div><div class="gt">Obavijesti</div><div class="grp">${g2}</div></div>
       </div></ha-card>`;
@@ -650,7 +650,7 @@ class RipacSolarCard extends RipacBase {
 
 class RipacBriefCard extends RipacBase {
   _watch() {
-    return ["input_boolean.sazetak_engleski"];
+    return ["input_boolean.sazetak_engleski", ...PROTOCOLS.map((p) => p.e)];
   }
   set hass(h) {
     super.hass = h;
@@ -677,7 +677,21 @@ class RipacBriefCard extends RipacBase {
       .lang { position:absolute; top:4px; right:2px; display:flex; background:rgba(127,127,127,.15); border-radius:10px; padding:2px; }
       .lang button { border:0; background:transparent; color:var(--secondary-text-color); font:inherit; font-size:11.5px; font-weight:800; padding:4px 8px; border-radius:8px; cursor:pointer; }
       .lang button.on { background:var(--card-background-color,#262626); color:var(--primary-text-color); box-shadow:0 1px 3px rgba(0,0,0,.3); }
-    </style><div class="b"><div class="lang"><button data-l="bs" class="${en ? "" : "on"}">BS</button><button data-l="en" class="${en ? "on" : ""}">EN</button></div>${html}</div>`;
+      .acts { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:12px; }
+      .act { border:0; cursor:pointer; border-radius:12px; padding:11px 4px; font:inherit; font-size:13px; font-weight:700; color:var(--primary-text-color);
+        background:rgba(127,127,127,.14); transition:background .2s, transform .1s; }
+      .act:active { transform:scale(.96); } .act:hover { background:color-mix(in srgb,var(--c) 25%,transparent); }
+      .act.run { background:var(--c); color:#fff; }
+    </style><div class="b"><div class="lang"><button data-l="bs" class="${en ? "" : "on"}">BS</button><button data-l="en" class="${en ? "on" : ""}">EN</button></div>${html}
+      ${this._config.protocols ? `<div class="acts">${PROTOCOLS.filter((p) => this._hass.states[p.e]).map((p) => `<button class="act ${this.st(p.e) === "on" ? "run" : ""}" data-e="${p.e}" style="--c:${p.c}">${en ? { Dolazak: "Arrive", Odlazak: "Leave", Noć: "Night", Poplava: "Flood" }[p.n] : p.n}</button>`).join("")}</div>` : ""}</div>`;
+    this.shadowRoot.querySelectorAll(".act").forEach((b) =>
+      b.addEventListener("click", () => {
+        const p = PROTOCOLS.find((x) => x.e === b.dataset.e);
+        if (p.q && !confirm(p.q)) return;
+        this._hass.callService("script", "turn_on", { entity_id: p.e });
+        b.classList.add("run");
+      })
+    );
     this.shadowRoot.querySelectorAll(".lang button").forEach((b) =>
       b.addEventListener("click", () => this._hass.callService("input_boolean", b.dataset.l === "en" ? "turn_on" : "turn_off", { entity_id: "input_boolean.sazetak_engleski" }))
     );
