@@ -559,7 +559,7 @@ class RipacSolarCard extends RipacBase {
       .ks { font-size:11px; color:#a9b6cf; margin-top:1px; }
       .pb2 { height:4px; border-radius:2px; background:rgba(255,255,255,.1); margin-top:5px; overflow:hidden; } .pb2 i { display:block; height:100%; background:#ffca28; border-radius:2px; }
     </style><ha-card class="sol">
-      <div class="top"><div style="flex:1"><div class="ttl">Solar i baterija</div><div class="sub">${status}</div></div>
+      <div class="top"><div style="flex:1">${this._config.no_title ? `<div class="ttl" style="font-size:15px">${status}</div>` : `<div class="ttl">Solar i baterija</div><div class="sub">${status}</div>`}</div>
         <div class="pill" data-e="select.ripac_q0048088723771_ripac_output_priority">${esc(mode.trim())}</div>
         <div class="pill ai ${ai ? "on" : ""}" data-tg="input_boolean.pametno_upravljanje_solarom"><ha-icon icon="mdi:robot"></ha-icon>${ai ? "Auto" : "Ručno"}</div></div>
       ${svg}
