@@ -580,25 +580,25 @@ class RipacSolarCard extends RipacBase {
     const C = { sol: "#ffca28", grid: "#b39ddb", load: "#90caf9", bat: "#69f0ae" };
     const socCol = soc < 25 ? "#ef5350" : soc < 50 ? "#ffb300" : C.bat;
     const R = 34, circ = 2 * Math.PI * R;
-    const line = (x1, y1, x2, y2, on, col, rev) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${on ? col : "rgba(255,255,255,.12)"}" stroke-width="${on ? 2.5 : 1.5}" stroke-dasharray="${on ? "4 6" : "2 6"}" stroke-linecap="round">${on ? `<animate attributeName="stroke-dashoffset" values="${rev ? "0;20" : "20;0"}" dur="0.9s" repeatCount="indefinite"/>` : ""}</line>`;
-    const node = (x, y, col, title, val, sub, extra = "") => `<g transform="translate(${x},${y})">
-      <circle r="${R}" fill="rgba(255,255,255,.05)" stroke="${col}" stroke-opacity=".35" stroke-width="2"/>${extra}
-      <text y="-10" text-anchor="middle" font-size="10.5" font-weight="700" fill="${col}">${title}</text>
-      <text y="7" text-anchor="middle" font-size="15" font-weight="800" fill="#fff">${val}</text>
-      ${sub ? `<text y="22" text-anchor="middle" font-size="9.5" fill="rgba(255,255,255,.6)">${sub}</text>` : ""}</g>`;
-    const socArc = `<circle r="${R}" fill="none" stroke="${socCol}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${(soc / 100) * circ} ${circ}" transform="rotate(-90)"/>`;
-    const svg = `<svg viewBox="0 0 320 250" class="flow">
-      ${line(160, 74, 160, 106, f.sol, C.sol)}
-      ${line(74, 125, 126, 125, f.grid, C.grid)}
-      ${line(194, 125, 246, 125, f.load, C.load)}
-      ${line(160, 144, 160, 176, f.bat, C.bat, bat > 0)}
-      ${node(160, 40, C.sol, "Solar", W(sol), visak ? "višak!" : "")}
-      ${node(40, 125, C.grid, "Mreža", W(grid), esc(tar).toLowerCase())}
-      ${node(280, 125, C.load, "Kuća", W(load), "")}
-      <g transform="translate(160,125)"><circle r="20" fill="rgba(255,255,255,.08)" stroke="rgba(255,255,255,.25)"/>
-        <text y="-2" text-anchor="middle" font-size="8.5" fill="rgba(255,255,255,.6)">inverter</text><text y="10" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">${Math.round(inv)}%</text></g>
-      ${node(160, 210, socCol, "Baterija", `${Math.round(soc)} %`, bat > 20 ? `puni ${W(bat)}` : bat < -20 ? `daje ${W(-bat)}` : "miruje", socArc)}
-    </svg>`;
+    const batIcon = soc >= 95 ? "mdi:battery" : bat > 20 ? `mdi:battery-charging-${Math.max(10, Math.round(soc / 10) * 10)}` : `mdi:battery-${Math.max(10, Math.round(soc / 10) * 10)}`;
+    const path = (id, d, on, col, rev) => `<path id="${id}" d="${d}" fill="none" stroke="${on ? col : "rgba(255,255,255,.10)"}" stroke-width="${on ? 3 : 2}" stroke-linecap="round" ${on ? `style="filter:drop-shadow(0 0 4px ${col})"` : ""}/>` +
+      (on ? [0, 0.5].map((b) => `<circle r="3.2" fill="#fff"><animateMotion dur="1.6s" begin="${b * 1.6}s" repeatCount="indefinite" keyPoints="${rev ? "1;0" : "0;1"}" keyTimes="0;1" calcMode="linear"><mpath href="#${id}"/></animateMotion></circle>`).join("") : "");
+    const pos = (x, y) => `left:${(x / 320) * 100}%;top:${(y / 250) * 100}%`;
+    const nd = (x, y, col, icon, val, sub, on) => `<div class="nd ${on ? "on" : ""}" style="${pos(x, y)};--c:${col}"><ha-icon icon="${icon}"></ha-icon><div class="nv">${val}</div>${sub ? `<div class="nsb">${sub}</div>` : ""}</div>`;
+    const svg = `<div class="fw"><svg viewBox="0 0 320 250">
+      ${path("p1", "M160,74 L160,105", f.sol, C.sol)}
+      ${path("p2", "M74,125 L140,125", f.grid, C.grid)}
+      ${path("p3", "M180,125 L246,125", f.load, C.load)}
+      ${path("p4", "M160,145 L160,176", f.bat, C.bat, bat > 0)}
+      <circle cx="160" cy="210" r="${R}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="4"/>
+      <circle cx="160" cy="210" r="${R}" fill="none" stroke="${socCol}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${(soc / 100) * circ} ${circ}" transform="rotate(-90 160 210)"/>
+    </svg>
+      ${nd(160, 40, C.sol, "mdi:solar-panel-large", W(sol), visak ? "višak" : "solar", f.sol)}
+      ${nd(40, 125, C.grid, "mdi:transmission-tower", W(grid), esc(tar).toLowerCase() || "mreža", f.grid)}
+      ${nd(280, 125, C.load, "mdi:home-lightning-bolt", W(load), "kuća", f.load)}
+      <div class="nd ctr" style="${pos(160, 125)}"><ha-icon icon="mdi:sine-wave"></ha-icon><div class="nsb">${Math.round(inv)}%</div></div>
+      ${nd(160, 210, socCol, batIcon, `${Math.round(soc)}%`, bat > 20 ? `+${W(bat)}` : bat < -20 ? `−${W(-bat)}` : "miruje", f.bat)}
+    </div>`;
     const cyc = this.st("sensor.ciklusi_baterije"), vmin = this.st("sensor.ripac_q0048088723771_baterija_napon_min_24h"), vnow = this.st(Q + "battery_voltage");
     this.shadowRoot.innerHTML = `<style>${css}
       ha-card.sol { background:radial-gradient(110% 80% at 50% 35%,#24304a,#121826 70%); color:#fff; }
@@ -607,7 +607,16 @@ class RipacSolarCard extends RipacBase {
       .pill { font-size:11.5px; font-weight:700; padding:5px 10px; border-radius:10px; background:rgba(255,255,255,.08); color:#e8eefc; cursor:pointer; white-space:nowrap; }
       .pill.ai { display:flex; align-items:center; gap:4px; } .pill.ai.on { background:rgba(105,240,174,.18); color:#69f0ae; }
       .pill ha-icon { --mdc-icon-size:15px; }
-      .flow { width:100%; max-width:420px; display:block; margin:4px auto 0; }
+      .fw { position:relative; width:100%; max-width:400px; aspect-ratio:320/250; margin:6px auto 0; }
+      .fw svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+      .nd { position:absolute; transform:translate(-50%,-50%); width:21.25%; aspect-ratio:1; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center;
+        background:rgba(255,255,255,.05); box-shadow:inset 0 0 0 2px rgba(255,255,255,.10); transition:all .3s; }
+      .nd.on { background:color-mix(in srgb,var(--c) 14%,transparent); box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--c) 55%,transparent), 0 0 18px color-mix(in srgb,var(--c) 25%,transparent); }
+      .nd ha-icon { --mdc-icon-size:22px; color:rgba(255,255,255,.45); } .nd.on ha-icon { color:var(--c); }
+      .nv { font-size:15px; font-weight:800; color:#fff; line-height:1.15; margin-top:1px; }
+      .nsb { font-size:10px; color:#a9b6cf; }
+      .nd.ctr { width:12.5%; background:rgba(255,255,255,.08); } .nd.ctr ha-icon { --mdc-icon-size:16px; color:#cfd8ea; }
+      .nd:last-of-type { box-shadow:none; background:color-mix(in srgb,var(--c) 10%,transparent); }
       .kp { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:8px; }
       .k { padding:9px; border-radius:12px; background:rgba(255,255,255,.06); cursor:pointer; }
       .kl { font-size:10.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; color:#a9b6cf; }
