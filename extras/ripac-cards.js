@@ -240,6 +240,8 @@ class RipacUnaCard extends RipacBase {
     try {
       const r = await this._hass.callWS({ type: "call_service", domain: "weather", service: "get_forecasts", service_data: { type: "daily" }, target: { entity_id: "weather.home" }, return_response: true });
       this._wx = r.response["weather.home"].forecast || [];
+      const r2 = await this._hass.callWS({ type: "call_service", domain: "weather", service: "get_forecasts", service_data: { type: "hourly" }, target: { entity_id: "weather.home" }, return_response: true });
+      this._wxh = r2.response["weather.home"].forecast || [];
       this._render();
     } catch (e) {}
   }
@@ -293,7 +295,7 @@ class RipacUnaCard extends RipacBase {
       return `<rect x="${bx - 7}" y="${base - bh}" width="14" height="${bh}" rx="2" fill="#42a5f5" opacity=".35"/><text x="${bx}" y="${base - bh - 2}" text-anchor="middle" font-size="7.5" fill="#64b5f6">${Math.round(mm)} mm</text>`;
     }).join("") : "";
     const pk = pred && pred.peak[0] > Date.now() + 3600e3 && pred.peak[1] - fut[0][1] >= 3 ? pred.peak : null;
-    const pkCol = pk ? (pk[1] >= 200 ? "#e53935" : pk[1] >= 180 ? "#ffb300" : "#64b5f6") : "";
+    const pkCol = pk ? (pk[1] >= 205 ? "#e53935" : pk[1] >= 195 ? "#ffb300" : "#64b5f6") : "";
     const xl = [[-48, "-48 h"], [-24, "-24 h"], [0, "sada"], [24, "+1 dan"], [48, "+2 dana"], [72, "+3 dana"]]
       .map(([hh, t]) => `<text x="${x(Date.now() + hh * 3600e3)}" y="${H - 6}" text-anchor="${hh === -48 ? "start" : hh === 72 ? "end" : "middle"}" font-size="8.5" fill="${hh === 0 ? "var(--primary-text-color)" : "var(--secondary-text-color)"}" font-weight="${hh === 0 ? 700 : 400}">${t}</text>`).join("");
     return `<svg class="spark" viewBox="0 0 ${W} ${H}" style="height:${H}px">
@@ -302,7 +304,7 @@ class RipacUnaCard extends RipacBase {
       ${grid.join("")}
       <rect x="${nowX}" y="${top}" width="${W - nowX}" height="${base - top}" fill="rgba(127,127,127,.06)"/>
       ${bars}
-      ${thr(180, "#ffb300")}${thr(200, "#e53935")}${thr(250, "#b71c1c")}
+      ${thr(195, "#ffb300")}${thr(205, "#e53935")}${thr(250, "#b71c1c")}
       <path d="${past}L${nowX},${base}L${x(pts.find((p) => p[0] >= t0)?.[0] ?? t0)},${base}Z" fill="url(#ug)"/>
       <path d="${past}" fill="none" stroke="${c}" stroke-width="2.2" stroke-linejoin="round"/>
       ${futLine ? `<path d="${futLine}L${x(fut[fut.length - 1][0])},${base}L${nowX},${base}Z" fill="url(#fg)"/><path d="${futLine}" fill="none" stroke="#64b5f6" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ""}
@@ -312,9 +314,36 @@ class RipacUnaCard extends RipacBase {
         <text x="${lx}" y="${y(pk[1]) - 10}" text-anchor="middle" font-size="8.5" font-weight="800" fill="#111">~${Math.round(pk[1])} cm</text>`; })() : ""}
       ${xl}
     </svg>
-    <div class="legend2"><span><i style="background:${c}"></i>izmjereno</span><span><i class="d"></i>procjena po prognozi kiše</span><span><i style="background:#42a5f5;opacity:.5"></i>kiša</span><span><i style="background:#ffb300"></i>180 voda na putu</span><span><i style="background:#e53935"></i>200 put plavi</span></div>`;
+    <div class="legend2"><span><i style="background:${c}"></i>izmjereno</span><span><i class="d"></i>procjena po prognozi kiše</span><span><i style="background:#42a5f5;opacity:.5"></i>kiša</span><span><i style="background:#ffb300"></i>195 voda na putu</span><span><i style="background:#e53935"></i>205 put plavi</span></div>`;
   }
   // rough expectation for the next 2-3 days from forecast rain, current trend and upstream stations
+  _rainSpells() {
+    const hrs = (this._wxh || []).filter((x) => new Date(x.datetime) > Date.now() - 3600e3);
+    const sp = [];
+    for (const x of hrs) {
+      const t = new Date(x.datetime).getTime(), mm = x.precipitation || 0;
+      if (mm < 0.2) continue;
+      const last = sp[sp.length - 1];
+      if (last && t - last.end <= 2 * 3600e3) { last.end = t; last.mm += mm; }
+      else sp.push({ start: t, end: t, mm });
+    }
+    return sp.filter((x) => x.mm >= 1);
+  }
+  _rainText() {
+    const sp = this._rainSpells();
+    if (!this._wxh) return "";
+    if (!sp.length) return "Ne očekuje se kiša u naredna 2 dana.";
+    const hm = (t) => new Date(t).toLocaleTimeString("bs-BA", { hour: "2-digit", minute: "2-digit" });
+    const day = (t) => { const d = new Date(t), n = new Date(), tm = new Date(); tm.setDate(n.getDate() + 1);
+      return d.toDateString() === n.toDateString() ? "danas" : d.toDateString() === tm.toDateString() ? "sutra" : DAYS[d.getDay()]; };
+    const dur = (a, b) => { const hh = Math.round((b - a) / 3600e3) + 1; return hh >= 24 ? `${Math.round(hh / 24 * 10) / 10} dana` : `${hh} h`; };
+    return sp.slice(0, 2).map((x, i) => {
+      const now = x.start <= Date.now() + 1800e3;
+      const end = x.end + 3600e3;
+      const what = now ? `Kiša pada sada i trajat će do ~${hm(end)}${day(end) !== "danas" ? ` (${day(end)})` : ""} – još ${dur(Date.now(), x.end)}` : `${i ? "Zatim " : ""}${i ? day(x.start) : day(x.start).charAt(0).toUpperCase() + day(x.start).slice(1)} ${hm(x.start)}–${hm(end)} (${dur(x.start, x.end)})`;
+      return `${what}, ~${Math.round(x.mm)} mm.`;
+    }).join(" ");
+  }
   _expect(l, tr, wx, prog, pred) {
     const up = UPSTREAM.map(([e, r, n]) => [n, parseFloat(this.st(r)) || 0]);
     const wave = up.filter(([, d]) => d >= 15);
@@ -333,8 +362,8 @@ class RipacUnaCard extends RipacBase {
       txt = end < l - 2 ? `Bez značajne kiše (${Math.round(rain3)} mm u 3 dana) – Una polako opada, oko <b>${end} cm</b> za 3 dana.` : `Bez značajne kiše – Una ostaje mirna oko <b>${Math.round(l)} cm</b>.`;
     }
     const top = Math.max(peak, l);
-    if (top >= 200) { col = "#e53935"; icon = "mdi:home-flood"; txt += " <b>Put bi mogao biti poplavljen.</b>"; }
-    else if (top >= 180) { col = "#ffb300"; icon = "mdi:alert"; txt += " Voda bi mogla izaći na put."; }
+    if (top >= 205) { col = "#e53935"; icon = "mdi:home-flood"; txt += " <b>Put bi mogao biti poplavljen.</b>"; }
+    else if (top >= 195) { col = "#ffb300"; icon = "mdi:alert"; txt += " Voda bi mogla izaći na put."; }
     else txt += " Put ostaje prohodan.";
     if (wx.slice(0, 3).some((d) => /snow/.test(d.condition)) && peak > l) txt += " Dio padavina je snijeg, pa porast može kasniti.";
     if (prog.startsWith("raste")) { col = "#42a5f5"; icon = "mdi:trending-up"; }
@@ -344,7 +373,7 @@ class RipacUnaCard extends RipacBase {
     if (!this._hass) return;
     const l = parseFloat(this.st(UNA));
     const tr = parseFloat(this.st("sensor.hs_ripac")) || 0;
-    const st = isNaN(l) ? null : l >= 250 ? ["#b71c1c", "PLACEVI", "voda na placevima"] : l >= 200 ? ["#e53935", "POPLAVA", "put poplavljen"] : l >= 180 ? ["#ffb300", "PRIPREMNO", "voda na dijelu puta"] : ["#43a047", "NORMALNO", "put suh i prohodan"];
+    const st = isNaN(l) ? null : l >= 250 ? ["#b71c1c", "PLACEVI", "voda na placevima"] : l >= 205 ? ["#e53935", "POPLAVA", "put poplavljen"] : l >= 195 ? ["#ffb300", "PRIPREMNO", "voda na putu"] : ["#43a047", "NORMALNO", "put suh i prohodan"];
     const c = st ? st[0] : "#888";
     const trend = tr >= 1 ? `raste ${tr.toFixed(1)} cm/h` : tr <= -1 ? `opada ${Math.abs(tr).toFixed(1)} cm/h` : "miruje";
     const prog = this.st("sensor.una_prognoza") || "";
@@ -410,6 +439,7 @@ class RipacUnaCard extends RipacBase {
       <div class="big"><span class="lvl">${isNaN(l) ? "–" : l.toFixed(1)}</span><span class="unit">cm</span></div>
       ${this._spark(c, pred)}
       ${ex ? `<div class="lbl">Šta očekivati</div><div class="exp" style="--c:${ex.col}"><ha-icon icon="${ex.icon}"></ha-icon><div>${ex.txt}<small>Procjena iz prognoze kiše i uzvodnih stanica</small></div></div>` : ""}
+      ${this._rainText() ? `<div class="exp" style="--c:#64b5f6;margin-top:6px;background:rgba(100,181,246,.10)"><ha-icon icon="mdi:weather-rainy"></ha-icon><div>${this._rainText()}</div></div>` : ""}
       ${wx.length ? `<div class="lbl">Vrijeme</div><div class="wk">${days}</div>` : ""}
       ${wrows ? `<div class="fc2" style="margin-top:8px">${wrows}</div>` : ""}
       ${ups ? `<div class="lbl">Uzvodno</div><div class="up">${ups}</div>` : ""}
