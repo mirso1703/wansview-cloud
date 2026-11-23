@@ -328,7 +328,7 @@ class RipacUnaCard extends RipacBase {
       .wdw { position:absolute; top:4px; right:4px; width:18px; height:18px; border-radius:50%; background:var(--c); display:flex; align-items:center; justify-content:center; }
       .wdw ha-icon { --mdc-icon-size:12px; color:#000; }
       .exp { display:flex; gap:10px; align-items:flex-start; margin-top:10px; padding:10px 12px; border-radius:12px;
-        background:color-mix(in srgb,var(--c) 12%,transparent); border-left:3px solid var(--c); font-size:13px; line-height:1.4; color:var(--primary-text-color); }
+        background:color-mix(in srgb,var(--c) 12%,transparent); font-size:13px; line-height:1.4; color:var(--primary-text-color); }
       .exp ha-icon { color:var(--c); --mdc-icon-size:20px; flex:none; margin-top:1px; }
       .exp small { display:block; font-size:10.5px; color:var(--secondary-text-color); margin-top:3px; }
     </style><ha-card>

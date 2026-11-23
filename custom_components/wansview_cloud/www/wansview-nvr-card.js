@@ -456,7 +456,7 @@ class WansviewNvrCard extends HTMLElement {
         .row { display:flex; align-items:center; gap:10px; padding:6px; border-radius:12px; cursor:pointer; background:rgba(127,127,127,.06); transition:background .15s; }
         .row:hover { background:rgba(127,127,127,.14); }
         .rthumb { width:64px; height:40px; border-radius:8px; overflow:hidden; flex:none; display:flex; align-items:center; justify-content:center;
-                  background:color-mix(in srgb,var(--c) 22%,#151515); box-shadow:inset 3px 0 0 var(--c); font-size:18px; }
+                  background:color-mix(in srgb,var(--c) 22%,#151515); font-size:18px; }
         .rthumb img { width:100%; height:100%; object-fit:cover; }
         .rtx { flex:1; display:flex; flex-direction:column; min-width:0; }
         .rtx b { font-size:15px; color:var(--primary-text-color); }
