@@ -903,7 +903,7 @@ class RipacVozilaCard extends HTMLElement {
     await Promise.all(this._items.map(async (it) => {
       try {
         const r = await this._hass.callWS({ type: "media_source/resolve_media", media_content_id: `media-source://media_source/local/vozila/${vPlate(it.summary)}.jpg`, expires: 3600 });
-        this._img[it.summary] = r.url + (r.url.includes("?") ? "&" : "?") + "v=" + encodeURIComponent((it.description || "").length + (vParse(it.description)["viđeno"] || ""));
+        this._img[it.summary] = r.url;
       } catch (e) { this._img[it.summary] = null; }
     }));
     this._render();
@@ -956,7 +956,7 @@ class RipacVozilaCard extends HTMLElement {
       .v.un { background:color-mix(in srgb,#ff9800 10%,transparent); border-color:color-mix(in srgb,#ff9800 35%,transparent); }
       .top { display:flex; align-items:center; gap:8px; }
       .plate { font:700 15px/1 ui-monospace,Menlo,monospace; letter-spacing:1px; background:#fff; color:#111; border:2px solid #1e3a8a; border-left:10px solid #1e3a8a;
-        border-radius:6px; padding:5px 8px; width:120px; text-transform:uppercase; }
+        border-radius:6px; padding:5px 8px; width:120px; min-width:0; flex:0 1 120px; text-transform:uppercase; }
       .tag { font-size:11px; font-weight:700; padding:3px 8px; border-radius:10px; background:rgba(76,175,80,.18); color:#66bb6a; }
       .v.un .tag { background:rgba(255,152,0,.2); color:#ffa726; }
       .sw { margin-left:auto; position:relative; width:40px; height:22px; cursor:pointer; } .sw input { opacity:0; width:0; height:0; }
@@ -964,11 +964,11 @@ class RipacVozilaCard extends HTMLElement {
       .sw i:after { content:""; position:absolute; left:3px; top:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition:.2s; }
       .sw input:checked + i { background:#4caf50; } .sw input:checked + i:after { left:21px; }
       .del { background:none; border:0; color:var(--secondary-text-color); cursor:pointer; padding:2px; } .del ha-icon { --mdc-icon-size:18px; }
-      .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+      .grid { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); gap:8px; margin-top:8px; }
       .grid .wide { grid-column:1 / -1; }
       label { display:flex; flex-direction:column; gap:3px; font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; color:var(--secondary-text-color); }
       label input, .new input { font-size:14px; text-transform:none; letter-spacing:0; color:var(--primary-text-color); background:rgba(127,127,127,.12);
-        border:1px solid transparent; border-radius:9px; padding:7px 9px; outline:none; min-width:0; }
+        border:1px solid transparent; border-radius:9px; padding:7px 9px; outline:none; min-width:0; width:100%; box-sizing:border-box; }
       label input:focus, .new input:focus { border-color:var(--primary-color); }
       .seen { display:flex; align-items:center; gap:5px; margin-top:7px; font-size:11.5px; color:var(--secondary-text-color); } .seen ha-icon { --mdc-icon-size:14px; }
       .empty { font-size:13px; color:var(--secondary-text-color); padding:6px 2px 10px; }
