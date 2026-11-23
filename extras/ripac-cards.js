@@ -107,12 +107,14 @@ const TOGGLES = [
   { e: "automation.nocu_ugasi_vanjska_svjetla_bez_pokreta", n: "Noćno gašenje", on: "Gasi vanjska svjetla", off: "Isključeno", i: "mdi:weather-night", c: "#8e24aa" },
   { e: "input_boolean.vodostaj_na_zakljucanom_ekranu", n: "Una na ekranu", on: "Live Activity", off: "Isključeno", i: "mdi:cellphone-lock", c: "#1e88e5" },
   { e: "input_boolean.vikendica_na_zakljucanom_ekranu", n: "Kuća na ekranu", on: "Live Activity", off: "Isključeno", i: "mdi:cellphone-information", c: "#3949ab" },
+  { e: "input_boolean.stednja_solarnih_kamera", n: "Argus štedi", on: "Odmara dok su poznati tu", off: "Uvijek čuva", i: "mdi:solar-power", c: "#f9a825" },
 ];
+const MUTE = "input_boolean.kamere_utisane", MUTE_WHY = "input_text.kamere_utisane_razlog";
 const PRESENCE = "binary_sensor.presence_senzor_sonoff_a480133cc3_occupancy";
 
 class RipacSecurityCard extends RipacBase {
   _watch() {
-    return [...PROTOCOLS.map((p) => p.e), ...TOGGLES.map((t) => t.e), PRESENCE, "sensor.kamera_iza_kuce"];
+    return [...PROTOCOLS.map((p) => p.e), ...TOGGLES.map((t) => t.e), PRESENCE, "sensor.kamera_iza_kuce", MUTE, MUTE_WHY, "sensor.poznati_na_mrezi"];
   }
   _status() {
     const prazna = this.st("input_boolean.vikendica_prazna") === "on";
@@ -135,13 +137,22 @@ class RipacSecurityCard extends RipacBase {
     const row = (t) => {
       const v = this.st(t.e);
       const on = t.alarm ? v !== "disarmed" : v === "on";
-      const sub = t.alarm && v === "triggered" ? "AKTIVIRAN!" : on ? t.on : t.off;
-      return `<div class="r ${on ? "on" : ""}" data-e="${t.e}" style="--c:${t.c}"><div class="rx"><div class="rn">${t.n}</div><div class="rs">${sub}</div></div><div class="sw"></div></div>`;
+      let sub = t.alarm && v === "triggered" ? "AKTIVIRAN!" : on ? t.on : t.off;
+      let cls = on ? "on" : "";
+      if (t.e === "automation.obavijest_o_pokretu_na_kameri" && on && this.st(MUTE) === "on") {
+        const why = this.st(MUTE_WHY) || "", net = this.st("sensor.poznati_na_mrezi");
+        const ko = why.startsWith("auto:") ? (why.split(":")[2] || "").replace(/ručno/, "") : why.startsWith("mreza:") ? why.slice(6) : "";
+        const who = (net && net !== "niko" ? net : ko) || "";
+        sub = who ? `Utišano · ${who} ${/,/.test(who) ? "su" : "je"} tu` : why.includes("ručno") ? "Utišano dok je auto tu" : "Utišano · poznati su tu";
+        cls = "on part";
+      }
+      return `<div class="r ${cls}" data-e="${t.e}" style="--c:${t.c}"><div class="rx"><div class="rn">${t.n}</div><div class="rs">${sub}</div></div><div class="sw"></div></div>`;
     };
     const have = TOGGLES.filter((t) => this._hass.states[t.e]);
     const g1 = have.slice(0, 4).map(row).join(""), g2 = have.slice(4).map(row).join("");
     this.shadowRoot.innerHTML = `<style>${css}
       .prot2 { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+      .r.part .sw { opacity:.55; } .r.part .rs { color:#66bb6a !important; }
       .pb2 { border:0; cursor:pointer; border-radius:12px; padding:11px 4px; font:inherit; font-size:13px; font-weight:700; color:var(--primary-text-color);
         background:rgba(127,127,127,.12); transition:background .2s, transform .1s; }
       .pb2:active { transform:scale(.96); } .pb2:hover { background:color-mix(in srgb,var(--c) 25%,transparent); }
@@ -187,6 +198,11 @@ class RipacSecurityCard extends RipacBase {
   }
   _toggle(e) {
     const t = TOGGLES.find((x) => x.e === e);
+    if (e === "automation.obavijest_o_pokretu_na_kameri" && this.st(MUTE) === "on") {
+      this._hass.callService("input_boolean", "turn_off", { entity_id: MUTE });
+      this._hass.callService("input_text", "set_value", { entity_id: MUTE_WHY, value: "" });
+      return;
+    }
     if (t.alarm) {
       const v = this.st(e);
       this._hass.callService("alarm_control_panel", v === "disarmed" ? "alarm_arm_away" : "alarm_disarm", { entity_id: e });
@@ -1143,7 +1159,7 @@ window.customCards.push(
     "Dolazak": "Arrive", "Odlazak": "Leave", "Noć": "Night", "Poplava": "Flood", "Čuvanje": "Guarding", "Obavijesti": "Notifications",
     "Kuća prazna": "House empty", "Čuvam kuću": "Guarding the house", "Neko je tu": "Someone is home", "Gosti": "Guests", "Isključeno": "Off",
     "Alarmi pauzirani": "Alarms paused", "TPanel alarm": "TPanel alarm", "Naoružan": "Armed", "Razoružan": "Disarmed", "AKTIVIRAN!": "TRIGGERED!",
-    "Alarm poplave": "Flood alarm", "Mirno": "Quiet", "AKTIVAN": "ACTIVE", "Javljam pokret": "Reporting motion", "Utišano": "Muted",
+    "Alarm poplave": "Flood alarm", "Mirno": "Quiet", "AKTIVAN": "ACTIVE", "Javljam pokret": "Reporting motion", "Argus štedi": "Argus saving", "Odmara dok su poznati tu": "Rests while family is here", "Uvijek čuva": "Always on guard", "Utišano": "Muted",
     "Noćno gašenje": "Night lights-off", "Gasi vanjska svjetla": "Turns off outdoor lights", "Una na ekranu": "Una on lock screen",
     "Kuća na ekranu": "House on lock screen", "Kuća je čuvana": "House is guarded", "Gosti su u vikendici": "Guests at the cottage",
     "Ti si u vikendici": "You're at the cottage", "Neko je u dnevnoj": "Someone in the living room", "Pažnja": "Attention",
