@@ -281,7 +281,7 @@ class RipacUnaCard extends RipacBase {
     const x = (t) => left + ((t - t0) / span) * (W - left);
     const y = (v) => top + (1 - (v - lo) / (hi - lo)) * (H - top - bot);
     const nowX = x(Date.now());
-    const past = pts.filter((p) => p[0] >= t0).map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("") + `L${nowX.toFixed(1)},${y(pts[pts.length - 1][1]).toFixed(1)}`;
+    const past = pts.map((p) => [Math.max(p[0], t0), p[1]]).map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("") + `L${nowX.toFixed(1)},${y(pts[pts.length - 1][1]).toFixed(1)}`;
     const futLine = fut.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("");
     const base = H - bot;
     const grid = [];
@@ -305,7 +305,7 @@ class RipacUnaCard extends RipacBase {
       <rect x="${nowX}" y="${top}" width="${W - nowX}" height="${base - top}" fill="rgba(127,127,127,.06)"/>
       ${bars}
       ${thr(195, "#ffb300")}${thr(205, "#e53935")}${thr(250, "#b71c1c")}
-      <path d="${past}L${nowX},${base}L${x(pts.find((p) => p[0] >= t0)?.[0] ?? t0)},${base}Z" fill="url(#ug)"/>
+      <path d="${past}L${nowX},${base}L${x(t0)},${base}Z" fill="url(#ug)"/>
       <path d="${past}" fill="none" stroke="${c}" stroke-width="2.2" stroke-linejoin="round"/>
       ${futLine ? `<path d="${futLine}L${x(fut[fut.length - 1][0])},${base}L${nowX},${base}Z" fill="url(#fg)"/><path d="${futLine}" fill="none" stroke="#64b5f6" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ""}
       <line x1="${nowX}" x2="${nowX}" y1="${top}" y2="${base}" stroke="var(--primary-text-color)" stroke-opacity=".35"/>
