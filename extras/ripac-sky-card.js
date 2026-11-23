@@ -139,7 +139,7 @@ class RipacSkyCard extends HTMLElement {
     const above = [];
     for (const r of this._near) {
       const l = this._look(r.rec, now, obs);
-      if (l && l.el > 0) above.push({ name: r.name, ...l });
+      if (l && l.el > 0 && l.range > 200 && l.range < 2500 && !/DTC/.test(r.name)) above.push({ name: r.name, ...l });
     }
     const daz = parseFloat(this._st(this._c.dish_az)), del = parseFloat(this._st(this._c.dish_el));
     let best = null;
