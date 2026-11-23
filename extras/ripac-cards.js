@@ -871,6 +871,126 @@ class RipacSwitchChip extends HTMLElement {
   }
 }
 
+
+/* ---------- Vozila: poznata / nepoznata (todo.poznata_vozila, polja u opisu) ---------- */
+const VKEYS = ["model", "boja", "vlasnik", "poznato", "viđeno"];
+function vParse(desc) {
+  const o = {};
+  (desc || "").split("\n").forEach((l) => { const m = l.match(/^\s*([^:]+):\s*(.*)$/); if (m) o[m[1].trim().toLowerCase()] = m[2].trim(); });
+  return o;
+}
+function vDesc(o) { return VKEYS.map((k) => `${k}: ${o[k] || ""}`).join("\n"); }
+function vPlate(x) { return (x || "").toUpperCase().replace(/[^A-Z0-9ŠĐČĆŽ]/g, ""); }
+function vEsc(x) { return String(x || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;"); }
+
+class RipacVozilaCard extends HTMLElement {
+  setConfig(c) { this._c = Object.assign({ entity: "todo.poznata_vozila", title: "Vozila" }, c || {}); if (!this.shadowRoot) this.attachShadow({ mode: "open" }); }
+  set hass(h) {
+    this._hass = h;
+    const st = h.states[this._c.entity];
+    const key = st ? st.state + st.last_updated : "";
+    if (key !== this._key && !this._editing()) { this._key = key; this._load(); }
+  }
+  getCardSize() { return 4; }
+  _editing() { const a = this.shadowRoot && this.shadowRoot.activeElement; return !!(a && a.tagName === "INPUT"); }
+  async _load() {
+    try {
+      const r = await this._hass.callWS({ type: "call_service", domain: "todo", service: "get_items", target: { entity_id: this._c.entity }, return_response: true });
+      this._items = (r.response[this._c.entity] || {}).items || [];
+    } catch (e) { this._items = []; }
+    this._render();
+  }
+  async _svc(service, data) { await this._hass.callService("todo", service, data, { entity_id: this._c.entity }); }
+  async _save(uid) {
+    const it = this._items.find((i) => i.uid === uid); if (!it) return;
+    const row = this.shadowRoot.querySelector(`[data-uid="${uid}"]`);
+    const o = vParse(it.description);
+    row.querySelectorAll("input[data-k]").forEach((i) => { o[i.dataset.k] = i.type === "checkbox" ? (i.checked ? "da" : "ne") : i.value.trim(); });
+    const plate = vPlate(row.querySelector("input[data-plate]").value) || it.summary;
+    await this._svc("update_item", { item: uid, rename: plate, description: vDesc(o) });
+  }
+  async _add() {
+    const f = this.shadowRoot.querySelector(".new");
+    const plate = vPlate(f.querySelector("[data-n=tab]").value);
+    if (!plate) { f.querySelector("[data-n=tab]").focus(); return; }
+    const o = { model: f.querySelector("[data-n=model]").value.trim(), boja: f.querySelector("[data-n=boja]").value.trim(),
+      vlasnik: f.querySelector("[data-n=vl]").value.trim(), poznato: "da", "viđeno": "" };
+    await this._svc("add_item", { item: plate, description: vDesc(o) });
+    this._adding = false;
+  }
+  _render() {
+    if (!this._hass) return;
+    const items = (this._items || []).map((it) => ({ it, o: vParse(it.description) }))
+      .sort((a, b) => (a.o.poznato === "da") - (b.o.poznato === "da") || (b.o["viđeno"] || "").localeCompare(a.o["viđeno"] || ""));
+    const rows = items.map(({ it, o }) => {
+      const kn = o.poznato === "da";
+      return `<div class="v ${kn ? "kn" : "un"}" data-uid="${it.uid}">
+        <div class="top"><input class="plate" data-plate value="${vEsc(it.summary)}" spellcheck="false">
+          <span class="tag">${kn ? "Poznato" : "Nepoznato"}</span>
+          <label class="sw"><input type="checkbox" data-k="poznato" ${kn ? "checked" : ""}><i></i></label>
+          <button class="del" title="Obriši"><ha-icon icon="mdi:trash-can-outline"></ha-icon></button></div>
+        <div class="grid">
+          <label>Model<input data-k="model" value="${vEsc(o.model)}" placeholder="npr. VW Golf 7"></label>
+          <label>Boja<input data-k="boja" value="${vEsc(o.boja)}" placeholder="boja"></label>
+          <label class="wide">Vlasnik<input data-k="vlasnik" value="${vEsc(o.vlasnik)}" placeholder="čije je auto?"></label>
+        </div>
+        ${o["viđeno"] ? `<div class="seen"><ha-icon icon="mdi:eye-outline"></ha-icon>${vEsc(o["viđeno"])}</div>` : ""}
+      </div>`;
+    }).join("") || `<div class="empty">Još nema vozila. Kamera ih sama dodaje kad ih vidi, ili dodaj ručno.</div>`;
+    const nUn = items.filter((x) => x.o.poznato !== "da").length;
+    this.shadowRoot.innerHTML = `<style>
+      ha-card { padding:14px 14px 12px; }
+      .hd { display:flex; align-items:center; gap:8px; font-size:16px; font-weight:600; margin-bottom:10px; }
+      .hd ha-icon { --mdc-icon-size:22px; color:var(--primary-color); } .hd .n { margin-left:auto; font-size:12px; font-weight:500; color:var(--secondary-text-color); }
+      .v { border-radius:14px; padding:10px 12px; margin-bottom:8px; background:rgba(127,127,127,.08); border:1px solid rgba(127,127,127,.14); }
+      .v.un { background:color-mix(in srgb,#ff9800 10%,transparent); border-color:color-mix(in srgb,#ff9800 35%,transparent); }
+      .top { display:flex; align-items:center; gap:8px; }
+      .plate { font:700 15px/1 ui-monospace,Menlo,monospace; letter-spacing:1px; background:#fff; color:#111; border:2px solid #1e3a8a; border-left:10px solid #1e3a8a;
+        border-radius:6px; padding:5px 8px; width:120px; text-transform:uppercase; }
+      .tag { font-size:11px; font-weight:700; padding:3px 8px; border-radius:10px; background:rgba(76,175,80,.18); color:#66bb6a; }
+      .v.un .tag { background:rgba(255,152,0,.2); color:#ffa726; }
+      .sw { margin-left:auto; position:relative; width:40px; height:22px; cursor:pointer; } .sw input { opacity:0; width:0; height:0; }
+      .sw i { position:absolute; inset:0; border-radius:11px; background:rgba(127,127,127,.4); transition:.2s; }
+      .sw i:after { content:""; position:absolute; left:3px; top:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition:.2s; }
+      .sw input:checked + i { background:#4caf50; } .sw input:checked + i:after { left:21px; }
+      .del { background:none; border:0; color:var(--secondary-text-color); cursor:pointer; padding:2px; } .del ha-icon { --mdc-icon-size:18px; }
+      .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+      .grid .wide { grid-column:1 / -1; }
+      label { display:flex; flex-direction:column; gap:3px; font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; color:var(--secondary-text-color); }
+      label input, .new input { font-size:14px; text-transform:none; letter-spacing:0; color:var(--primary-text-color); background:rgba(127,127,127,.12);
+        border:1px solid transparent; border-radius:9px; padding:7px 9px; outline:none; min-width:0; }
+      label input:focus, .new input:focus { border-color:var(--primary-color); }
+      .seen { display:flex; align-items:center; gap:5px; margin-top:7px; font-size:11.5px; color:var(--secondary-text-color); } .seen ha-icon { --mdc-icon-size:14px; }
+      .empty { font-size:13px; color:var(--secondary-text-color); padding:6px 2px 10px; }
+      .addb { width:100%; border:1px dashed rgba(127,127,127,.4); background:none; color:var(--primary-color); border-radius:12px; padding:9px; font-size:14px; cursor:pointer; }
+      .new { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:10px; border-radius:14px; background:rgba(127,127,127,.08); }
+      .new .wide { grid-column:1 / -1; } .new .acts { grid-column:1 / -1; display:flex; gap:8px; justify-content:flex-end; }
+      .new button { border:0; border-radius:10px; padding:8px 14px; font-size:14px; cursor:pointer; } .ok { background:var(--primary-color); color:#fff; } .no { background:rgba(127,127,127,.2); color:var(--primary-text-color); }
+    </style><ha-card>
+      <div class="hd"><ha-icon icon="mdi:car-multiple"></ha-icon>${vEsc(this._c.title)}<span class="n">${items.length} vozila${nUn ? ` · ${nUn} nepoznato` : ""}</span></div>
+      ${rows}
+      ${this._adding ? `<div class="new">
+          <input data-n="tab" class="wide" placeholder="Tablica (npr. A12K345)" style="text-transform:uppercase">
+          <input data-n="model" placeholder="Model"><input data-n="boja" placeholder="Boja">
+          <input data-n="vl" class="wide" placeholder="Vlasnik">
+          <div class="acts"><button class="no">Odustani</button><button class="ok">Dodaj</button></div></div>`
+        : `<button class="addb">+ Dodaj vozilo</button>`}
+    </ha-card>`;
+    const R = this.shadowRoot;
+    R.querySelectorAll(".v").forEach((row) => {
+      const uid = row.dataset.uid;
+      row.querySelectorAll("input").forEach((i) => i.addEventListener("change", () => this._save(uid)));
+      row.querySelector(".del").addEventListener("click", async () => {
+        if (confirm(`Obrisati ${row.querySelector(".plate").value}?`)) await this._svc("remove_item", { item: [uid] });
+      });
+    });
+    const ab = R.querySelector(".addb"); if (ab) ab.addEventListener("click", () => { this._adding = true; this._render(); R.querySelector("[data-n=tab]").focus(); });
+    const ok = R.querySelector(".ok"); if (ok) ok.addEventListener("click", () => this._add());
+    const no = R.querySelector(".no"); if (no) no.addEventListener("click", () => { this._adding = false; this._render(); });
+  }
+}
+
+if (!customElements.get("ripac-vozila-card")) customElements.define("ripac-vozila-card", RipacVozilaCard);
 if (!customElements.get("ripac-security-card")) customElements.define("ripac-security-card", RipacSecurityCard);
 if (!customElements.get("ripac-una-card")) customElements.define("ripac-una-card", RipacUnaCard);
 if (!customElements.get("ripac-net-card")) customElements.define("ripac-net-card", RipacNetCard);
