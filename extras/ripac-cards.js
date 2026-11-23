@@ -769,6 +769,7 @@ class RipacAcChip extends HTMLElement {
     const M = { heat: ["Grije", "#ff7043", "mdi:fire"], cool: ["Hladi", "#4fc3f7", "mdi:snowflake"], dry: ["Suši", "#26a69a", "mdi:water-percent"], fan_only: ["Ventilator", "#b0bec5", "mdi:fan"] };
     const col = on && M[mode] ? M[mode][1] : "#9e9e9e";
     const t = a.temperature;
+    const icon0 = this._c.icon || "mdi:air-conditioner";
     const modes = ["heat", "cool", "dry", "fan_only"].filter((m) => (a.hvac_modes || []).includes(m));
     const fanTxt = { auto: "auto", low: "1", middle_low: "2", medium: "3", middle_high: "4", high: "5" }[a.fan_mode] || a.fan_mode || "";
     this.shadowRoot.innerHTML = `<style>
@@ -790,7 +791,7 @@ class RipacAcChip extends HTMLElement {
       ${part === "controls"
         ? `<div class="ttl" title="Dodirni za promjenu režima"><ha-icon icon="${M[mode] ? M[mode][2] : "mdi:air-conditioner"}"></ha-icon>${M[mode] ? M[mode][0] : mode}</div>
            <div class="sep"></div><button class="dn">−</button><span class="t">${t ?? "–"}°</span><button class="up">+</button>`
-        : `<div class="ttl stat"><ha-icon icon="${on && M[mode] ? M[mode][2] : "mdi:air-conditioner"}"></ha-icon>${on ? `Klima · ${t ?? "–"}°` : "Klima · ugašena"}</div>
+        : `<div class="ttl stat"><ha-icon icon="${on && M[mode] ? M[mode][2] : icon0}"></ha-icon>${on ? `${this._c.name || "Klima"} · ${t ?? "–"}°` : `${this._c.name || "Klima"} · ${this._c.off_text || "ugašena"}`}</div>
            <button class="pw" title="${on ? "Ugasi" : "Upali"}"><ha-icon icon="mdi:power"></ha-icon></button>`}
     </div>`;
     const R = this.shadowRoot;
@@ -911,7 +912,7 @@ window.customCards.push(
     [/^(.*) · prije (.+)$/, (m, a, b) => `${EXACT[a] || a} · ${b} ago`], [/^prije (.+)$/, "$1 ago"],
     [/^(\S[^·]*?) · $/, (m, a) => `${EXACT[a.trim()] || a} · `], [/Solarne kamere/g, "Solar cameras"], [/^Mjesečni/, "Monthly"],
     [/^Vlaga /, "Humidity "], [/^Potrošnja /, "Load "], [/^Bojler /, "Boiler "],
-    [/^Klima · ugašena$/, "AC · off"], [/^Konvektor · ugašen/, "Heater · off"], [/^Konvektor · grije/, "Heater · heating"], [/^Klima · (\d+)°$/, "AC · $1°"], [/^Grije$/, "Heating"], [/^Hladi$/, "Cooling"], [/^Suši$/, "Drying"], [/^Ventilator$/, "Fan"],
+    [/^Klima · ugašena$/, "AC · off"], [/^Konvektor · ugašen/, "Heater · off"], [/^Konvektor · grije/, "Heater · heating"], [/^Klima · ([\d.]+)°$/, "AC · $1°"], [/^Konvektor · ([\d.]+)°$/, "Heater · $1°"], [/^Grije$/, "Heating"], [/^Hladi$/, "Cooling"], [/^Suši$/, "Drying"], [/^Ventilator$/, "Fan"],
     [/Niko nije u kući/g, "Nobody is home"], [/ · TPanel naoružan/g, " · TPanel armed"], [/kamere javljaju pokret/g, "cameras report motion"],
     [/Čuvanje je isključeno/g, "Guarding is off"], [/alarmi pauzirani/g, "alarms paused"], [/Alarmi i obavijesti o kretanju su pauzirani/g, "Alarms and motion alerts are paused"],
     [/put suh i prohodan/g, "road dry and passable"], [/voda na putu/g, "water on the road"], [/put poplavljen/g, "road flooded"], [/voda na placevima/g, "water on the plots"],
