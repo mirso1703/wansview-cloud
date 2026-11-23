@@ -705,7 +705,7 @@ class RipacSolarCard extends RipacBase {
       .nv { font-size:15px; font-weight:800; color:#fff; line-height:1.15; margin-top:1px; }
       .nsb { font-size:10px; color:#a9b6cf; }
       .nd.ctr { width:13.5%; background:rgba(255,255,255,.08); } .nd.ctr ha-icon { --mdc-icon-size:15px; color:#cfd8ea; } .nd.ctr .cv { font-size:11px; font-weight:700; color:#cfd8ea; line-height:1.1; }
-      .top { flex-wrap:wrap; } .top .hdr { flex:1 0 100%; min-width:0; margin-bottom:2px; }
+      .top { flex-wrap:nowrap; } .top .hdr { flex:1 1 auto; min-width:0; } .top .hdr .ttl { line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; } .top .pill { flex:0 0 auto; }
       .use { margin-top:10px; padding:10px 12px; border-radius:12px; background:rgba(255,255,255,.06); }
       .use .ut { display:flex; align-items:baseline; justify-content:space-between; } .use .ul { font-size:10.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; color:#a9b6cf; }
       .use .ut b { font-size:16px; font-weight:800; color:#fff; }
@@ -722,8 +722,8 @@ class RipacSolarCard extends RipacBase {
       .pb2 { height:4px; border-radius:2px; background:rgba(255,255,255,.1); margin-top:5px; overflow:hidden; } .pb2 i { display:block; height:100%; background:#ffca28; border-radius:2px; }
     </style><ha-card class="sol">
       <div class="top"><div class="hdr">${this._config.no_title ? `<div class="ttl" style="font-size:15px">${status}</div>` : `<div class="ttl">Solar i baterija</div><div class="sub">${status}</div>`}</div>
-        <div class="pill" data-e="select.ripac_q0048088723771_ripac_output_priority" title="Režim invertera">${{ SOL: "☀️ Solar prvo", SBU: "🔋 Solar → baterija → mreža", SUB: "☀️ Solar → mreža → baterija", UTI: "🔌 Mreža prvo" }[mode.trim()] || esc(mode.trim())}</div>
-        <div class="pill ai ${ai ? "on" : ""}" data-tg="input_boolean.pametno_upravljanje_solarom" title="Pametno upravljanje"><ha-icon icon="mdi:robot"></ha-icon>${ai ? "Pametno: uklj." : "Pametno: isklj."}</div></div>
+        <div class="pill" data-e="select.ripac_q0048088723771_ripac_output_priority" title="Režim invertera">${{ SOL: "☀️ Solar prvo", SBU: "🔋 Baterija prvo", SUB: "☀️ Solar → mreža", UTI: "🔌 Mreža prvo" }[mode.trim()] || esc(mode.trim())}</div>
+        <div class="pill ai ${ai ? "on" : ""}" data-tg="input_boolean.pametno_upravljanje_solarom" title="${ai ? "Pametno upravljanje: uključeno" : "Pametno upravljanje: isključeno"}"><ha-icon icon="mdi:robot"></ha-icon>Pametno</div></div>
       ${uses}
       ${svg}
       <div class="kp">
@@ -1376,7 +1376,7 @@ window.customCards.push(
     "195 voda na putu": "195 water on road", "205 put plavi": "205 road floods", "sada": "now", "+1 dan": "+1 day", "+2 dana": "+2 days", "+3 dana": "+3 days",
     "Žuto upozorenje": "Yellow warning", "Narandžasto upozorenje": "Orange warning", "Crveno upozorenje": "Red warning",
     // solar
-    "Kuća radi na bateriji": "House is running on battery", "Ručno": "Manual", "Pametno: uklj.": "Smart: on", "Pametno: isklj.": "Smart: off", "☀️ Solar prvo": "☀️ Solar first", "🔋 Solar → baterija → mreža": "🔋 Solar → battery → grid", "☀️ Solar → mreža → baterija": "☀️ Solar → grid → battery", "🔌 Mreža prvo": "🔌 Grid first", "Baterije": "Batteries", "miruje": "idle", "kuća": "house", "višak": "surplus", "inverter": "inverter", "Potrošnja": "Usage",
+    "Kuća radi na bateriji": "House is running on battery", "Ručno": "Manual", "Pametno: uklj.": "Smart: on", "Pametno": "Smart", "🔋 Baterija prvo": "🔋 Battery first", "☀️ Solar → mreža": "☀️ Solar → grid", "Pametno: isklj.": "Smart: off", "☀️ Solar prvo": "☀️ Solar first", "🔋 Solar → baterija → mreža": "🔋 Solar → battery → grid", "☀️ Solar → mreža → baterija": "☀️ Solar → grid → battery", "🔌 Mreža prvo": "🔌 Grid first", "Baterije": "Batteries", "miruje": "idle", "kuća": "house", "višak": "surplus", "inverter": "inverter", "Potrošnja": "Usage",
     "jeftina": "cheap", "skupa": "expensive", "mreža": "grid", "Solar danas": "Solar today", "Baterija": "Battery",
     "☀️ dobar dan": "☀️ good day", "⛅ osrednje": "⛅ moderate", "☁️ slabo sunca": "☁️ little sun",
     // internet / sky
