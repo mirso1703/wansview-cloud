@@ -239,7 +239,7 @@ class WansviewNvrCard extends HTMLElement {
         const its = all.filter((it) => it.camera === cam && kinds.has(this._kind(it)));
         const img = (its.find((it) => it.image) || {}).image;
         return `<div class="nm">${img ? `<img src="${img}">` : `<span class="ava">${this._esc(cam[0] || "?")}</span>`}
-          <span class="nt">${this._esc(cam)}</span>${its.length ? `<span class="bd">${its.length}</span>` : ""}</div>`;
+          <div class="nx"><span class="nt">${this._esc(cam.replace(/ Vikendica$/, ""))}</span><span class="bd">${its.length} ${its.length === 1 ? "događaj" : "događaja"}</span></div></div>`;
       })
       .join("");
     const dayChips = daysAvail
@@ -421,17 +421,18 @@ class WansviewNvrCard extends HTMLElement {
         .lg b { font-weight:800; }
         .person { --c:#ff5252; } .vehicle { --c:#ffa726; } .animal { --c:#66bb6a; } .motion { --c:#42a5f5; }
         .tl { display:flex; border-radius:14px; overflow:hidden; background:rgba(0,0,0,.22); border:1px solid rgba(127,127,127,.16); }
-        .tlnames { flex:none; width:118px; background:rgba(127,127,127,.06); border-right:1px solid rgba(127,127,127,.16); z-index:2; }
+        .tlnames { flex:none; width:112px; background:rgba(127,127,127,.06); border-right:1px solid rgba(127,127,127,.16); z-index:2; }
         .tlnames .sp { height:58px; }
         .nm { height:42px; display:flex; align-items:center; gap:7px; padding:0 8px; }
         .nm img, .nm .ava { width:26px; height:26px; border-radius:8px; object-fit:cover; flex:none; }
         .nm .ava { display:flex; align-items:center; justify-content:center; background:rgba(127,127,127,.25); font-size:12px; font-weight:700; color:var(--primary-text-color); }
-        .nt { flex:1; font-size:12px; font-weight:700; color:var(--primary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .bd { font-size:10px; font-weight:800; color:var(--secondary-text-color); background:rgba(127,127,127,.18); border-radius:8px; padding:1px 6px; }
+        .nx { flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.2; }
+        .nt { font-size:12px; font-weight:700; color:var(--primary-text-color); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .bd { font-size:10px; font-weight:600; color:var(--secondary-text-color); white-space:nowrap; }
         .tlscroll { flex:1; overflow-x:auto; scrollbar-width:thin; }
         .tlinner { position:relative; min-width:100%; overflow:hidden; padding-bottom:4px; }
-        .night { position:absolute; top:0; bottom:0; background:linear-gradient(180deg,rgba(40,60,140,.16),rgba(20,30,80,.10)); pointer-events:none; }
-        .sunmark { position:absolute; top:2px; transform:translateX(-50%); font-size:11px; color:#ffca28; pointer-events:none; }
+        .night { position:absolute; top:0; bottom:0; background:linear-gradient(180deg,rgba(60,80,170,.22),rgba(30,40,110,.14)); pointer-events:none; }
+        .sunmark { position:absolute; top:1px; transform:translateX(-50%); font-size:13px; color:#ffca28; pointer-events:none; }
         .sunmark.moon { color:#9fa8da; }
         .hist { position:relative; height:34px; margin-top:2px; }
         .bar { position:absolute; bottom:0; width:calc(100% / 48 - 2px); margin-left:1px; border-radius:3px 3px 1px 1px;
