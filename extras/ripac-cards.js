@@ -759,7 +759,7 @@ class RipacAcChip extends HTMLElement {
     const modes = ["heat", "cool", "dry", "fan_only"].filter((m) => (a.hvac_modes || []).includes(m));
     const fanTxt = { auto: "auto", low: "1", middle_low: "2", medium: "3", middle_high: "4", high: "5" }[a.fan_mode] || a.fan_mode || "";
     this.shadowRoot.innerHTML = `<style>
-      .c { display:flex; flex-direction:column; gap:7px; padding:8px; border-radius:18px; background:rgba(0,0,0,.55);
+      .c { display:flex; flex-direction:column; gap:7px; padding:${on ? 8 : 4}px; border-radius:18px; background:rgba(0,0,0,.55);
         backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); color:#fff; font:600 12px Inter,Roboto,sans-serif;
         box-shadow:${on ? `0 0 0 1.5px ${col}, 0 0 16px ${col}55` : "0 0 0 1px rgba(255,255,255,.15)"}; }
       .r { display:flex; align-items:center; gap:6px; }
@@ -776,16 +776,16 @@ class RipacAcChip extends HTMLElement {
     </style><div class="c">
       <div class="r"><div class="ttl"><ha-icon icon="${on && M[mode] ? M[mode][2] : "mdi:air-conditioner"}"></ha-icon>Klima · ${on && M[mode] ? M[mode][0] : "ugašena"}</div>
         <button class="pw" title="${on ? "Ugasi" : "Upali"}"><ha-icon icon="mdi:power"></ha-icon></button></div>
-      <div class="r">${modes.map((m) => `<button class="m ${mode === m ? "on" : ""}" data-m="${m}" style="--mc:${M[m][1]}" title="${M[m][0]}"><ha-icon icon="${M[m][2]}"></ha-icon></button>`).join("")}</div>
+      ${on ? `<div class="r">${modes.map((m) => `<button class="m ${mode === m ? "on" : ""}" data-m="${m}" style="--mc:${M[m][1]}" title="${M[m][0]}"><ha-icon icon="${M[m][2]}"></ha-icon></button>`).join("")}</div>
       <div class="r"><button class="dn">−</button><span class="t">${t ?? "–"}°</span><button class="up">+</button>
-        ${on ? `<button class="fan" title="Ventilator"><ha-icon icon="mdi:fan"></ha-icon>${fanTxt}</button>` : ""}</div>
+        <button class="fan" title="Ventilator"><ha-icon icon="mdi:fan"></ha-icon>${fanTxt}</button></div>` : ""}
     </div>`;
     const R = this.shadowRoot;
     const step = a.target_temp_step || 1;
     const sane = (m) => (m === "cool" ? (t && t >= 22 && t <= 28 ? t : 24) : m === "heat" ? (t && t >= 16 && t <= 24 ? t : 21) : t || 22);
     R.querySelector(".ttl").onclick = () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: this._c.entity }, bubbles: true, composed: true }));
-    R.querySelector(".dn").onclick = () => this._svc("set_temperature", { temperature: Math.max(a.min_temp || 16, (t || 21) - step) });
-    R.querySelector(".up").onclick = () => this._svc("set_temperature", { temperature: Math.min(a.max_temp || 32, (t || 21) + step) });
+    if (R.querySelector(".dn")) R.querySelector(".dn").onclick = () => this._svc("set_temperature", { temperature: Math.max(a.min_temp || 16, (t || 21) - step) });
+    if (R.querySelector(".up")) R.querySelector(".up").onclick = () => this._svc("set_temperature", { temperature: Math.min(a.max_temp || 32, (t || 21) + step) });
     R.querySelector(".pw").onclick = () => (on ? this._svc("turn_off", {}) : this._svc("set_temperature", { hvac_mode: "heat", temperature: sane("heat") }));
     R.querySelectorAll(".m").forEach((b) => (b.onclick = () => {
       const m = b.dataset.m;
@@ -868,7 +868,7 @@ window.customCards.push(
     [/\bu subotu\b/g, "on Saturday"], [/\bu nedjelju\b/g, "on Sunday"], [/\bu ponedjeljak\b/g, "on Monday"], [/\bu utorak\b/g, "on Tuesday"],
     [/Kuća radi na solaru/g, "House is running on solar"], [/, višak puni bateriju/g, ", surplus charges the battery"], [/Kuća je na mreži/g, "House is on the grid"], [/, solar puni bateriju/g, ", solar charges the battery"],
     [/^prognoza /, "forecast "], [/ cikl\./g, " cycles"], [/^daje /, "gives "], [/^puni /, "charging "],
-    [/(\d+) uređaja/g, "$1 devices"], [/ · AP offline/g, " · AP offline"], [/^čeka /, "standby "], [/^AKTIVNA /, "ACTIVE "], [/4G ovaj mj\./g, "4G this month"], [/(\d+) nova/g, "$1 new"],
+    [/(\d+) uređaja/g, "$1 devices"], [/ · AP offline/g, " · AP offline"], [/^čeka /, "standby "], [/^AKTIVNA /, "ACTIVE "], [/4G ovaj mj\./g, "4G this month"], [/(\d+) nova SMS/g, "$1 new SMS"], [/SMS: nema novih/g, "SMS: none new"], [/ ovaj mj\./g, " this month"], [/glavna veza · /g, "main link · "], [/^čeka · /, "standby · "], [/^AKTIVNA · /, "ACTIVE · "],
     [/u vidnom polju/g, "in view"], [/iznad horizonta/g, "above horizon"], [/^(danas|sutra) · za (.+)$/, (m, d, r) => `${d === "danas" ? "today" : "tomorrow"} · in ${r}`],
     [/satelita iznad horizonta, nijedan u vidnom polju tanjira/g, "satellites above horizon, none in the dish's view"],
   ];

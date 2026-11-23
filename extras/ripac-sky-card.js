@@ -207,18 +207,17 @@ class RipacSkyCard extends HTMLElement {
     const mesh = st("sensor.mesh_sadrvan_ap_status");
     const vid = st("switch.wansview_nvr_preuzimanje_videa") === "on";
     const barHtml = [1, 2, 3, 4, 5].map((b) => `<i style="height:${3 + b * 2}px;background:${b <= bars ? "#7dd3fc" : "rgba(255,255,255,.2)"}"></i>`).join("");
+    const ping = this._num(this._c.ping);
     return `
       <div class="path">
-        <div class="node ${online ? "act" : "idle"}"><ha-icon icon="mdi:satellite-uplink"></ha-icon><div class="nn">Starlink</div><div class="ns">${online ? "glavna veza" : "bez veze"}</div></div>
-        <div class="arrow">⇄</div>
-        <div class="node ${routerOk ? "" : "bad"}" data-e="${R}uptime"><ha-icon icon="mdi:router-wireless"></ha-icon><div class="nn">Ruter</div><div class="ns">${routerOk ? `${this._esc(st(R + "total_clients") || "?")} uređaja${mesh && mesh !== "online" ? " · AP offline" : ""}` : "ne odgovara"}</div></div>
-        <div class="arrow">⇄</div>
-        <div class="node ${online ? "idle" : "act"}" data-e="${R}rsrp"><ha-icon icon="mdi:signal-4g"></ha-icon><div class="nn">4G rezerva</div><div class="ns">${online ? "čeka" : "AKTIVNA"} <span class="bars">${barHtml}</span></div></div>
-      </div>
-      <div class="stats s3">
-        <div class="stat" data-e="${R}rsrp"><b>${this._esc(st(R + "rsrp") ?? "–")} <small>dBm</small></b><span>4G signal · ${this._esc(st(R + "band") || "")}</span></div>
-        <div class="stat" data-e="${R}4g_podaci_mjesecno"><b>${used}</b><span>4G ovaj mj.${lim ? ` / ${lim} GB` : ""}</span></div>
-        <div class="stat ${sms ? "hot" : ""}" data-nav="/cudy-router-sms"><b>${sms ? `${sms} nova` : "0"}</b><span>SMS ›</span></div>
+        <div class="node ${online ? "act" : "idle"}"><ha-icon icon="mdi:satellite-uplink"></ha-icon><div class="nn">Starlink</div>
+          <div class="ns">${online ? `glavna veza · ${ping} ms` : "bez veze"}</div></div>
+        <div class="node ${routerOk ? "" : "bad"}" data-nav="/cudy-router-sms"><ha-icon icon="mdi:router-wireless"></ha-icon><div class="nn">Ruter</div>
+          <div class="ns">${routerOk ? `${this._esc(st(R + "total_clients") || "?")} uređaja${mesh && mesh !== "online" ? " · AP offline" : ""}` : "ne odgovara"}</div>
+          <div class="ns ${sms ? "hot" : ""}">${sms ? `📩 ${sms} nova SMS` : "SMS: nema novih"}</div></div>
+        <div class="node ${online ? "idle" : "act"}" data-e="${R}rsrp"><ha-icon icon="mdi:signal-4g"></ha-icon><div class="nn">4G rezerva <span class="bars">${barHtml}</span></div>
+          <div class="ns">${online ? "čeka" : "AKTIVNA"} · ${this._esc(st(R + "rsrp") ?? "–")} dBm</div>
+          <div class="ns">${used}${lim ? ` / ${lim} GB` : ""} ovaj mj.</div></div>
       </div>
       <div class="vrow ${vid ? "on" : ""}" data-tg="switch.wansview_nvr_preuzimanje_videa"><ha-icon icon="mdi:download-network"></ha-icon>
         <div style="flex:1"><div style="font-weight:700;font-size:13px">Video sa solarnih kamera</div><div class="muted" style="margin-top:1px">${vid ? "preuzima se" : "pauzirano – štedi 4G"}</div></div><div class="sw"></div></div>`;
@@ -332,7 +331,7 @@ class RipacSkyCard extends HTMLElement {
       .node.act ha-icon{color:#5ee0a0}.node.bad{background:rgba(229,57,53,.2)}.node.idle{opacity:.8}
       .node ha-icon{--mdc-icon-size:20px;color:#cfe0ff}
       .nn{font-size:12.5px;font-weight:700;margin-top:2px}.ns{font-size:10.5px;opacity:.7}
-      .arrow{align-self:center;opacity:.4;font-size:14px}
+      .arrow{display:none}.ns.hot{color:#5ee0a0;opacity:1;font-weight:700}
       .bars{display:inline-flex;align-items:flex-end;gap:1.5px;height:13px;vertical-align:-2px;margin-left:2px}.bars i{width:3px;border-radius:1px}
       .stats.s3{grid-template-columns:repeat(3,1fr)}
       .stat small{font-size:10px;opacity:.7}.stat.hot{background:rgba(94,224,160,.2)}
