@@ -274,7 +274,7 @@ class RipacUnaCard extends RipacBase {
     const t0 = Date.now() - H0 * 3600 * 1000;
     const fut = pred ? pred.pts : [];
     const vals = pts.map((p) => p[1]).concat(fut.map((p) => p[1]));
-    const lo = Math.floor((Math.min(...vals) - 10) / 10) * 10, hi = Math.max(Math.ceil((Math.max(...vals) + 10) / 10) * 10, 190);
+    const lo = Math.floor((Math.min(...vals) - 10) / 10) * 10, hi = Math.max(Math.ceil((Math.max(...vals) + 10) / 10) * 10, 210);
     const W = 320, H = 120, top = 8, bot = 22, left = 28;
     const x = (t) => left + ((t - t0) / span) * (W - left);
     const y = (v) => top + (1 - (v - lo) / (hi - lo)) * (H - top - bot);
@@ -303,7 +303,7 @@ class RipacUnaCard extends RipacBase {
       ${grid.join("")}
       <rect x="${nowX}" y="${top}" width="${W - nowX}" height="${base - top}" fill="rgba(127,127,127,.06)"/>
       ${bars}
-      ${thr(180, "#ffb300", "put 180")}${thr(200, "#e53935", "poplava 200")}
+      ${thr(180, "#ffb300", "voda na putu 180")}${thr(200, "#e53935", "put plavi 200")}${thr(250, "#b71c1c", "placevi 250")}
       <path d="${past}L${nowX},${base}L${x(pts.find((p) => p[0] >= t0)?.[0] ?? t0)},${base}Z" fill="url(#ug)"/>
       <path d="${past}" fill="none" stroke="${c}" stroke-width="2.2" stroke-linejoin="round"/>
       ${futLine ? `<path d="${futLine}L${x(fut[fut.length - 1][0])},${base}L${nowX},${base}Z" fill="url(#fg)"/><path d="${futLine}" fill="none" stroke="#64b5f6" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ""}
