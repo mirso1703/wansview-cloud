@@ -195,6 +195,35 @@ class RipacSkyCard extends HTMLElement {
   }
   _esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
 
+  _net(online) {
+    const R = "sensor.vikendica_router_";
+    const st = (e) => this._h.states[e]?.state;
+    const bars = Math.max(0, Math.min(5, parseInt(st(R + "signal_strength")) || 0));
+    const mb = parseFloat(st(R + "4g_podaci_mjesecno")) || 0;
+    const lim = parseFloat(st("input_number.4g_mjesecni_limit_gb")) || 0;
+    const used = mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+    const sms = parseInt(st(R + "sms_unread")) || 0;
+    const routerOk = !["unavailable", "unknown", undefined].includes(st(R + "uptime"));
+    const mesh = st("sensor.mesh_sadrvan_ap_status");
+    const vid = st("switch.wansview_nvr_preuzimanje_videa") === "on";
+    const barHtml = [1, 2, 3, 4, 5].map((b) => `<i style="height:${3 + b * 2}px;background:${b <= bars ? "#7dd3fc" : "rgba(255,255,255,.2)"}"></i>`).join("");
+    return `
+      <div class="path">
+        <div class="node ${online ? "act" : "idle"}"><ha-icon icon="mdi:satellite-uplink"></ha-icon><div class="nn">Starlink</div><div class="ns">${online ? "glavna veza" : "bez veze"}</div></div>
+        <div class="arrow">⇄</div>
+        <div class="node ${routerOk ? "" : "bad"}" data-e="${R}uptime"><ha-icon icon="mdi:router-wireless"></ha-icon><div class="nn">Ruter</div><div class="ns">${routerOk ? `${this._esc(st(R + "total_clients") || "?")} uređaja${mesh && mesh !== "online" ? " · AP offline" : ""}` : "ne odgovara"}</div></div>
+        <div class="arrow">⇄</div>
+        <div class="node ${online ? "idle" : "act"}" data-e="${R}rsrp"><ha-icon icon="mdi:signal-4g"></ha-icon><div class="nn">4G rezerva</div><div class="ns">${online ? "čeka" : "AKTIVNA"} <span class="bars">${barHtml}</span></div></div>
+      </div>
+      <div class="stats s3">
+        <div class="stat" data-e="${R}rsrp"><b>${this._esc(st(R + "rsrp") ?? "–")} <small>dBm</small></b><span>4G signal · ${this._esc(st(R + "band") || "")}</span></div>
+        <div class="stat" data-e="${R}4g_podaci_mjesecno"><b>${used}</b><span>4G ovaj mj.${lim ? ` / ${lim} GB` : ""}</span></div>
+        <div class="stat ${sms ? "hot" : ""}" data-nav="/cudy-router-sms"><b>${sms ? `${sms} nova` : "0"}</b><span>SMS ›</span></div>
+      </div>
+      <div class="vrow ${vid ? "on" : ""}" data-tg="switch.wansview_nvr_preuzimanje_videa"><ha-icon icon="mdi:download-network"></ha-icon>
+        <div style="flex:1"><div style="font-weight:700;font-size:13px">Video sa solarnih kamera</div><div class="muted" style="margin-top:1px">${vid ? "preuzima se" : "pauzirano – štedi 4G"}</div></div><div class="sw"></div></div>`;
+  }
+
   _render() {
     if (!this.shadowRoot || !this._h) return;
     if (this.shadowRoot.querySelector(".hold")) return;
@@ -297,11 +326,29 @@ class RipacSkyCard extends HTMLElement {
       .row .r{display:flex;align-items:center;gap:6px;font-size:12px;opacity:.85}
       .el{width:30px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
       .el span{display:block;height:100%;background:linear-gradient(90deg,#7fb6ff,#ffe27a)}
+      .path{position:relative;display:flex;align-items:stretch;gap:6px;margin-top:12px}
+      .node{flex:1;padding:8px 4px;border-radius:12px;background:rgba(255,255,255,.07);text-align:center;cursor:pointer}
+      .node.act{background:rgba(94,224,160,.15);box-shadow:inset 0 0 0 1px rgba(94,224,160,.5)}
+      .node.act ha-icon{color:#5ee0a0}.node.bad{background:rgba(229,57,53,.2)}.node.idle{opacity:.8}
+      .node ha-icon{--mdc-icon-size:20px;color:#cfe0ff}
+      .nn{font-size:12.5px;font-weight:700;margin-top:2px}.ns{font-size:10.5px;opacity:.7}
+      .arrow{align-self:center;opacity:.4;font-size:14px}
+      .bars{display:inline-flex;align-items:flex-end;gap:1.5px;height:13px;vertical-align:-2px;margin-left:2px}.bars i{width:3px;border-radius:1px}
+      .stats.s3{grid-template-columns:repeat(3,1fr)}
+      .stat small{font-size:10px;opacity:.7}.stat.hot{background:rgba(94,224,160,.2)}
+      .stat[data-e],.stat[data-nav]{cursor:pointer}
+      .grp{position:relative;font-size:11px;text-transform:uppercase;letter-spacing:.5px;opacity:.6;font-weight:700;margin:12px 0 -4px}
+      .vrow{position:relative;display:flex;align-items:center;gap:10px;margin-top:6px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.07);cursor:pointer}
+      .vrow ha-icon{--mdc-icon-size:20px;color:#7dd3fc}
+      .sw{width:30px;height:18px;border-radius:9px;background:rgba(255,255,255,.25);position:relative;flex:none}
+      .sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s}
+      .vrow.on .sw{background:#5ee0a0}.vrow.on .sw::after{left:14px}
     </style>
     <ha-card>
       <div class="stars">${stars}</div>
-      <div class="hd"><ha-icon icon="mdi:satellite-uplink"></ha-icon>Starlink i nebo iznad Ripča
-        <span class="st"><span class="dot"></span>${online ? (obstructed ? "Zaklonjen" : "Online") : "Offline"}</span></div>
+      <div class="hd"><ha-icon icon="${this._c.net ? "mdi:web" : "mdi:satellite-uplink"}"></ha-icon>${this._c.net ? "Internet" : "Starlink i nebo iznad Ripča"}
+        <span class="st"><span class="dot"></span>${this._c.net ? (online ? (obstructed ? "Starlink zaklonjen" : "Online · Starlink") : "Preko 4G rezerve") : online ? (obstructed ? "Zaklonjen" : "Online") : "Offline"}</span></div>
+      ${this._c.net ? this._net(online) + `<div class="grp">Starlink</div>` : ""}
       <div class="stats">
         <div class="stat"><b>${this._num(this._c.ping)} ms</b><span>Ping</span></div>
         <div class="stat"><b>${this._num(this._c.down, 1)}</b><span>↓ Mbit/s</span></div>
@@ -338,6 +385,10 @@ class RipacSkyCard extends HTMLElement {
           : `<div class="muted">Nema vidljivih preleta u naredna 24 h.</div>`}
       </div>
     </ha-card>`;
+    const root = this.shadowRoot;
+    root.querySelectorAll("[data-e]").forEach((el) => (el.onclick = () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: el.dataset.e }, bubbles: true, composed: true }))));
+    root.querySelectorAll("[data-nav]").forEach((el) => (el.onclick = () => { history.pushState(null, "", el.dataset.nav); window.dispatchEvent(new CustomEvent("location-changed")); }));
+    root.querySelectorAll("[data-tg]").forEach((el) => (el.onclick = () => { this._h.callService("homeassistant", "toggle", { entity_id: el.dataset.tg }); el.classList.toggle("on"); }));
     this.shadowRoot.querySelector(".sec").onclick = () => {
       history.pushState(null, "", this._c.link);
       window.dispatchEvent(new CustomEvent("location-changed"));
