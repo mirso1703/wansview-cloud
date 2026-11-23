@@ -848,6 +848,7 @@ window.customCards.push(
   };
   const SUBS = [
     [/^(.*) · prije (.+)$/, (m, a, b) => `${EXACT[a] || a} · ${b} ago`], [/^prije (.+)$/, "$1 ago"],
+    [/^(\S[^·]*?) · $/, (m, a) => `${EXACT[a.trim()] || a} · `], [/Solarne kamere/g, "Solar cameras"], [/^Mjesečni/, "Monthly"],
     [/^Vlaga /, "Humidity "], [/^Potrošnja /, "Load "], [/^Bojler /, "Boiler "],
     [/^Klima · ugašena$/, "AC · off"], [/^Klima · Grije$/, "AC · heating"], [/^Klima · Hladi$/, "AC · cooling"], [/^Klima · Suši$/, "AC · drying"], [/^Klima · Ventilator$/, "AC · fan"],
     [/Niko nije u kući/g, "Nobody is home"], [/ · TPanel naoružan/g, " · TPanel armed"], [/kamere javljaju pokret/g, "cameras report motion"],
@@ -886,7 +887,7 @@ window.customCards.push(
   const trImg = (img, en) => {
     const src = img.getAttribute("src") || "";
     if (en) {
-      if (!src.startsWith("data:image/svg+xml;base64,") || img.dataset.bsSrc) return;
+      if (!src.startsWith("data:image/svg+xml;base64,") || [...svgCache.values()].includes(src)) return;
       let out = svgCache.get(src);
       if (!out) {
         try {
