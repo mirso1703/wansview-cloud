@@ -952,7 +952,7 @@ class RipacVozilaCard extends HTMLElement {
       ha-card { padding:14px 14px 12px; }
       .hd { display:flex; align-items:center; gap:8px; font-size:16px; font-weight:600; margin-bottom:10px; }
       .hd ha-icon { --mdc-icon-size:22px; color:var(--primary-color); } .hd .n { margin-left:auto; font-size:12px; font-weight:500; color:var(--secondary-text-color); }
-      .v { border-radius:14px; padding:10px 12px; margin-bottom:8px; background:rgba(127,127,127,.08); border:1px solid rgba(127,127,127,.14); }
+      .v { overflow:hidden; border-radius:14px; padding:10px 12px; margin-bottom:8px; background:rgba(127,127,127,.08); border:1px solid rgba(127,127,127,.14); }
       .v.un { background:color-mix(in srgb,#ff9800 10%,transparent); border-color:color-mix(in srgb,#ff9800 35%,transparent); }
       .top { display:flex; align-items:center; gap:8px; }
       .plate { font:700 15px/1 ui-monospace,Menlo,monospace; letter-spacing:1px; background:#fff; color:#111; border:2px solid #1e3a8a; border-left:10px solid #1e3a8a;
