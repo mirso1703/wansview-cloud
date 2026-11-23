@@ -813,12 +813,49 @@ class RipacAcChip extends HTMLElement {
   }
 }
 
+class RipacSwitchChip extends HTMLElement {
+  setConfig(c) {
+    this._c = { name: "Uređaj", icon: "mdi:power", color: "#ff7043", on_text: "radi", off_text: "ugašen", ...c };
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+  }
+  set hass(h) {
+    const ids = [this._c.entity, this._c.power].filter(Boolean);
+    const changed = !this._h || ids.some((e) => this._h.states[e] !== h.states[e]);
+    this._h = h;
+    if (changed) this._render();
+  }
+  _render() {
+    const s = this._h?.states[this._c.entity];
+    if (!s) return;
+    const on = s.state === "on", col = this._c.color;
+    const p = this._c.power ? parseFloat(this._h.states[this._c.power]?.state) : NaN;
+    const pw = !isNaN(p) && p > 1 ? (p >= 1000 ? `${(p / 1000).toFixed(1)} kW` : `${Math.round(p)} W`) : "";
+    this.shadowRoot.innerHTML = `<style>
+      .c { display:flex; align-items:center; gap:4px; padding:4px 4px 4px 10px; border-radius:22px; background:rgba(0,0,0,.55);
+        backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); color:#fff; font:600 12.5px Inter,Roboto,sans-serif; white-space:nowrap; cursor:pointer;
+        box-shadow:${on ? `0 0 0 1.5px ${col}, 0 0 14px ${col}55` : "0 0 0 1px rgba(255,255,255,.15)"}; user-select:none; }
+      .c ha-icon { --mdc-icon-size:17px; }
+      .i { color:${on ? col : "#bbb"}; display:flex; }
+      .pw { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:${on ? col : "rgba(255,255,255,.14)"}; margin-left:4px; }
+      .w { opacity:.75; font-weight:500; }
+    </style><div class="c"><span class="i"><ha-icon icon="${this._c.icon}"></ha-icon></span>
+      <span>${this._c.name} · ${on ? this._c.on_text : this._c.off_text}${on && pw ? ` <span class="w">${pw}</span>` : ""}</span>
+      <span class="pw"><ha-icon icon="mdi:power"></ha-icon></span></div>`;
+    const c = this.shadowRoot.querySelector(".c");
+    let lp;
+    c.addEventListener("pointerdown", () => (lp = setTimeout(() => { lp = null; this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: this._c.entity }, bubbles: true, composed: true })); }, 600)));
+    c.addEventListener("pointerleave", () => clearTimeout(lp));
+    c.addEventListener("pointerup", () => { if (!lp) return; clearTimeout(lp); this._h.callService("homeassistant", "toggle", { entity_id: this._c.entity }); });
+  }
+}
+
 if (!customElements.get("ripac-security-card")) customElements.define("ripac-security-card", RipacSecurityCard);
 if (!customElements.get("ripac-una-card")) customElements.define("ripac-una-card", RipacUnaCard);
 if (!customElements.get("ripac-net-card")) customElements.define("ripac-net-card", RipacNetCard);
 if (!customElements.get("ripac-solar-card")) customElements.define("ripac-solar-card", RipacSolarCard);
 if (!customElements.get("ripac-brief-card")) customElements.define("ripac-brief-card", RipacBriefCard);
 if (!customElements.get("ripac-ac-chip")) customElements.define("ripac-ac-chip", RipacAcChip);
+if (!customElements.get("ripac-switch-chip")) customElements.define("ripac-switch-chip", RipacSwitchChip);
 if (!customElements.get("ripac-care-card")) customElements.define("ripac-care-card", RipacCareCard);
 window.customCards = window.customCards || [];
 window.customCards.push(
@@ -865,7 +902,7 @@ window.customCards.push(
     [/^(.*) · prije (.+)$/, (m, a, b) => `${EXACT[a] || a} · ${b} ago`], [/^prije (.+)$/, "$1 ago"],
     [/^(\S[^·]*?) · $/, (m, a) => `${EXACT[a.trim()] || a} · `], [/Solarne kamere/g, "Solar cameras"], [/^Mjesečni/, "Monthly"],
     [/^Vlaga /, "Humidity "], [/^Potrošnja /, "Load "], [/^Bojler /, "Boiler "],
-    [/^Klima · ugašena$/, "AC · off"], [/^Klima · (\d+)°$/, "AC · $1°"], [/^Grije$/, "Heating"], [/^Hladi$/, "Cooling"], [/^Suši$/, "Drying"], [/^Ventilator$/, "Fan"],
+    [/^Klima · ugašena$/, "AC · off"], [/^Konvektor · ugašen/, "Heater · off"], [/^Konvektor · grije/, "Heater · heating"], [/^Klima · (\d+)°$/, "AC · $1°"], [/^Grije$/, "Heating"], [/^Hladi$/, "Cooling"], [/^Suši$/, "Drying"], [/^Ventilator$/, "Fan"],
     [/Niko nije u kući/g, "Nobody is home"], [/ · TPanel naoružan/g, " · TPanel armed"], [/kamere javljaju pokret/g, "cameras report motion"],
     [/Čuvanje je isključeno/g, "Guarding is off"], [/alarmi pauzirani/g, "alarms paused"], [/Alarmi i obavijesti o kretanju su pauzirani/g, "Alarms and motion alerts are paused"],
     [/put suh i prohodan/g, "road dry and passable"], [/voda na putu/g, "water on the road"], [/put poplavljen/g, "road flooded"], [/voda na placevima/g, "water on the plots"],
@@ -948,7 +985,7 @@ window.customCards.push(
   };
   setInterval(tick, 1200);
   // translate custom cards right after each render
-  for (const name of ["ripac-security-card", "ripac-una-card", "ripac-solar-card", "ripac-care-card", "ripac-net-card", "ripac-ac-chip", "ripac-sky-card"]) {
+  for (const name of ["ripac-security-card", "ripac-una-card", "ripac-solar-card", "ripac-care-card", "ripac-net-card", "ripac-ac-chip", "ripac-switch-chip", "ripac-sky-card"]) {
     const run = () => {
       const C = customElements.get(name);
       if (!C || C.prototype.__trWrapped) return;
