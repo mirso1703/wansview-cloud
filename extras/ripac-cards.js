@@ -1266,7 +1266,7 @@ class RipacZivotinjeCard extends HTMLElement {
     const items = (this._items || []).map((it) => ({ it, o: vParse(it.description) }))
       .sort((a, b) => (parseInt(b.o.broj) || 0) - (parseInt(a.o.broj) || 0));
     const tiles = items.map(({ it, o }) => `<div class="z ${o.divlja === "da" ? "wild" : ""}" data-uid="${it.uid}">
-        ${this._img[it.uid] ? `<img src="${this._img[it.uid]}" loading="lazy">` : `<div class="noimg"><ha-icon icon="mdi:paw"></ha-icon></div>`}
+        ${this._img[it.uid] ? `<img class="ph" src="${this._img[it.uid]}" loading="lazy" title="Otvori sliku">` : `<div class="noimg"><ha-icon icon="mdi:paw"></ha-icon></div>`}
         <div class="b">
           <input class="nm" value="${vEsc(o.ime)}" placeholder="Daj ime…">
           <div class="vr">${vEsc(o.vrsta || "")}${o.divlja === "da" ? " · divlja" : ""} · ${vEsc(o.broj || "1")}×</div>
@@ -1293,6 +1293,14 @@ class RipacZivotinjeCard extends HTMLElement {
       .zd { font-size:10.5px; color:var(--secondary-text-color); margin-top:4px; }
       .del { position:absolute; top:6px; right:6px; width:26px; height:26px; border-radius:50%; border:0; background:rgba(0,0,0,.45); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; }
       .del ha-icon { --mdc-icon-size:16px; }
+      .ph { cursor:zoom-in; }
+      .lb { position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.88); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; box-sizing:border-box; cursor:zoom-out; animation:lbIn .15s ease-out; }
+      @keyframes lbIn { from { opacity:0 } to { opacity:1 } }
+      .lb img { max-width:100%; max-height:calc(100% - 90px); object-fit:contain; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,.6); image-rendering:auto; }
+      .lb .cap { color:#fff; text-align:center; margin-top:12px; max-width:560px; }
+      .lb .cap b { font-size:17px; } .lb .cap div { font-size:13px; opacity:.8; margin-top:3px; }
+      .lb .x { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; width:38px; height:38px; border-radius:50%; border:0; background:rgba(255,255,255,.18); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+      .lb .x ha-icon { --mdc-icon-size:22px; }
       .empty { font-size:13px; color:var(--secondary-text-color); padding:4px 2px 8px; }
     </style><ha-card>
       <div class="hd"><ha-icon icon="mdi:paw"></ha-icon>Životinje<span class="n">${items.length} zapamćeno</span></div>
@@ -1300,6 +1308,8 @@ class RipacZivotinjeCard extends HTMLElement {
     </ha-card>`;
     this.shadowRoot.querySelectorAll(".z").forEach((el) => {
       const it = this._items.find((x) => x.uid === el.dataset.uid);
+      const ph = el.querySelector(".ph");
+      if (ph) ph.addEventListener("click", () => this._open(it));
       const nm = el.querySelector(".nm");
       nm.addEventListener("change", () => this._setName(it, nm.value.trim()));
       nm.addEventListener("keydown", (e) => { if (e.key === "Enter") nm.blur(); });
@@ -1307,6 +1317,22 @@ class RipacZivotinjeCard extends HTMLElement {
         if (confirm("Obrisati ovu životinju iz liste?")) await this._hass.callService("todo", "remove_item", { item: [it.uid] }, { entity_id: this._c.entity });
       });
     });
+  }
+  _open(it) {
+    const o = vParse(it.description); const src = this._img[it.uid]; if (!src) return;
+    const old = document.getElementById("ripac-lb"); if (old) old.remove();
+    const lb = document.createElement("div"); lb.id = "ripac-lb"; lb.className = "lb";
+    const css = this.shadowRoot.querySelector("style").textContent.split("\n").filter((l) => /\.lb|lbIn|from \{/.test(l)).join("\n").replace(/\.lb\b/g, "#ripac-lb");
+    lb.innerHTML = `<style>${css}</style><button class="x" title="Zatvori"><ha-icon icon="mdi:close"></ha-icon></button>
+      <img src="${src}" alt="">
+      <div class="cap"><b>${vEsc(o.ime || (o.vrsta || "Životinja"))}</b>
+        <div>${vEsc(o.vrsta || "")}${o.divlja === "da" ? " · divlja" : ""} · viđena ${vEsc(o.broj || "1")}×</div>
+        ${o.opis ? `<div>${vEsc(o.opis)}</div>` : ""}
+        <div>Zadnji put: ${vEsc(o.zadnje || "")}${o.prvo ? ` · prvi put: ${vEsc(o.prvo)}` : ""}</div></div>`;
+    const close = () => { lb.remove(); document.removeEventListener("keydown", esc); };
+    const esc = (e) => { if (e.key === "Escape") close(); };
+    lb.addEventListener("click", close); document.addEventListener("keydown", esc);
+    document.body.appendChild(lb);
   }
 }
 
