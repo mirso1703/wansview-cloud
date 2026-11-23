@@ -1,6 +1,8 @@
 """Wansview Cloud (AJCloud) integration."""
 from __future__ import annotations
 
+import logging
+
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
@@ -14,6 +16,8 @@ from .api import WansviewApi, WansviewError
 from .const import CONF_AGENT_TOKEN, DOMAIN, PLATFORMS
 from .coordinator import WansviewCoordinator
 from .recordings import CARD_URL, async_setup_recordings
+
+_LOGGER = logging.getLogger(__name__)
 
 RAW_SCHEMA = vol.Schema({
     vol.Required("url"): cv.string,
@@ -64,16 +68,46 @@ def _register_services(hass: HomeAssistant) -> None:
                                      supports_response=SupportsResponse.ONLY)
 
     if not hass.services.has_service(DOMAIN, "save_image"):
+        import os
+
+        def _crop(data: bytes, box) -> bytes:
+            """box = [ymin, xmin, ymax, xmax] on a 0-1000 scale (Gemini style); pads 10 %."""
+            from io import BytesIO
+            from PIL import Image
+            im = Image.open(BytesIO(data)).convert("RGB")
+            w, h = im.size
+            y0, x0, y1, x1 = [max(0, min(1000, float(v))) for v in box]
+            if y1 <= y0 or x1 <= x0:
+                return data
+            py, px = (y1 - y0) * 0.1, (x1 - x0) * 0.1
+            area = (int(max(0, x0 - px) * w / 1000), int(max(0, y0 - py) * h / 1000),
+                    int(min(1000, x1 + px) * w / 1000), int(min(1000, y1 + py) * h / 1000))
+            out = BytesIO()
+            im.crop(area).save(out, "JPEG", quality=88)
+            return out.getvalue()
+
+        def _read(path: str) -> bytes:
+            with open(path, "rb") as f:
+                return f.read()
+
+        def _ok(path: str) -> bool:
+            return path.startswith("/media/") or path.startswith("/share/")
+
         async def save_image(call: ServiceCall):
-            """Save the current picture of a camera or image entity to a file under /media."""
-            import os
-            ent, path = call.data["entity_id"], os.path.realpath(call.data["filename"])
-            if not (path.startswith("/media/") or path.startswith("/share/")):
+            """Save a camera/image entity picture (or copy a file), optionally cropped to a box."""
+            path = os.path.realpath(call.data["filename"])
+            if not _ok(path):
                 raise HomeAssistantError("filename must be under /media or /share")
-            if ent.startswith("camera."):
+            ent, src = call.data.get("entity_id"), call.data.get("source")
+            if src:
+                src = os.path.realpath(src)
+                if not _ok(src) or not os.path.isfile(src):
+                    raise HomeAssistantError("source must be an existing file under /media or /share")
+                data = await hass.async_add_executor_job(_read, src)
+            elif ent and ent.startswith("camera."):
                 from homeassistant.components.camera import async_get_image
                 data = (await async_get_image(hass, ent)).content
-            elif ent.startswith("image."):
+            elif ent and ent.startswith("image."):
                 comp = hass.data.get("image")
                 try:
                     from homeassistant.components.image.const import DATA_COMPONENT
@@ -85,16 +119,52 @@ def _register_services(hass: HomeAssistant) -> None:
                     raise HomeAssistantError(f"{ent} not found")
                 data = await img.async_image()
             else:
-                raise HomeAssistantError("entity must be camera.* or image.*")
+                raise HomeAssistantError("give source (file) or entity_id (camera.* / image.*)")
             if not data:
                 raise HomeAssistantError("no image")
+            box = call.data.get("box")
+            if box and len(box) == 4:
+                try:
+                    data = await hass.async_add_executor_job(_crop, data, box)
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.debug("crop failed: %s", err)
             from .nvr import _write
             await hass.async_add_executor_job(_write, path, data)
             return {"filename": path, "bytes": len(data)}
 
         hass.services.async_register(DOMAIN, "save_image", save_image, schema=vol.Schema({
-            vol.Required("entity_id"): cv.entity_id, vol.Required("filename"): cv.string}),
+            vol.Optional("entity_id"): cv.entity_id, vol.Optional("source"): cv.string,
+            vol.Required("filename"): cv.string, vol.Optional("box"): list}),
             supports_response=SupportsResponse.OPTIONAL)
+
+        def _latest(folder: str):
+            best = None
+            for root, _d, files in os.walk(folder):
+                for f in files:
+                    if f.lower().endswith((".jpg", ".jpeg", ".png")):
+                        p = os.path.join(root, f)
+                        m = os.path.getmtime(p)
+                        if best is None or m > best[0]:
+                            best = (m, p)
+            return best
+
+        async def latest_image(call: ServiceCall):
+            """Newest picture the NVR saved for a camera (folder name under the NVR root)."""
+            from .recordings import _root
+            from datetime import datetime
+            folder = os.path.join(_root(hass), call.data["camera"])
+            best = await hass.async_add_executor_job(_latest, folder)
+            if not best:
+                return {"path": None}
+            media_dir = (getattr(hass.config, "media_dirs", None) or {}).get("local") or "/media"
+            rel = os.path.relpath(best[1], media_dir)
+            return {"path": best[1], "time": datetime.fromtimestamp(best[0]).isoformat(),
+                    "age_s": int(datetime.now().timestamp() - best[0]),
+                    "media_content_id": f"media-source://media_source/local/{rel}"}
+
+        hass.services.async_register(DOMAIN, "latest_image", latest_image,
+                                     schema=vol.Schema({vol.Required("camera"): cv.string}),
+                                     supports_response=SupportsResponse.ONLY)
 
 
 async def _reload(hass: HomeAssistant, entry: ConfigEntry) -> None:

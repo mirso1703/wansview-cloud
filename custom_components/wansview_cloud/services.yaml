@@ -12,12 +12,26 @@ raw_request:
 save_image:
   fields:
     entity_id:
-      required: true
       selector:
         entity:
           domain: [camera, image]
+    source:
+      example: "/media/wansview/Kuća Parking/2026-11-23/13-47-14.jpg"
+      selector:
+        text:
     filename:
       required: true
       example: "/media/vozila/A12K345.jpg"
+      selector:
+        text:
+    box:
+      example: "[300, 200, 700, 600]"
+      selector:
+        object:
+latest_image:
+  fields:
+    camera:
+      required: true
+      example: "Kuća Parking"
       selector:
         text:
