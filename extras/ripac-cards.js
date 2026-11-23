@@ -754,6 +754,9 @@ class RipacAcChip extends HTMLElement {
     if (!s) return;
     this._done = true;
     const a = s.attributes, mode = s.state, on = mode !== "off" && mode !== "unavailable";
+    const part = this._c.part || "all";
+    this.style.display = part === "controls" && !on ? "none" : "";
+    if (part === "controls" && !on) { this.shadowRoot.innerHTML = ""; return; }
     const M = { heat: ["Grije", "#ff7043", "mdi:fire"], cool: ["Hladi", "#4fc3f7", "mdi:snowflake"], dry: ["Suši", "#26a69a", "mdi:water-percent"], fan_only: ["Ventilator", "#b0bec5", "mdi:fan"] };
     const col = on && M[mode] ? M[mode][1] : "#9e9e9e";
     const t = a.temperature;
@@ -775,9 +778,11 @@ class RipacAcChip extends HTMLElement {
       .pw { background:${on ? col : "rgba(255,255,255,.14)"}; }
       .t { font-size:16px; font-weight:800; min-width:34px; text-align:center; }
     </style><div class="c">
-      <div class="ttl" title="${on ? "Dodirni za promjenu režima" : "Klima"}"><ha-icon icon="${on && M[mode] ? M[mode][2] : "mdi:air-conditioner"}"></ha-icon>${on && M[mode] ? M[mode][0] : "Klima · ugašena"}</div>
-      ${on ? `<div class="sep"></div><button class="dn">−</button><span class="t">${t ?? "–"}°</span><button class="up">+</button><div class="sep"></div>` : ""}
-      <button class="pw" title="${on ? "Ugasi" : "Upali"}"><ha-icon icon="mdi:power"></ha-icon></button>
+      ${part === "controls"
+        ? `<div class="ttl" title="Dodirni za promjenu režima"><ha-icon icon="${M[mode] ? M[mode][2] : "mdi:air-conditioner"}"></ha-icon>${M[mode] ? M[mode][0] : mode}</div>
+           <div class="sep"></div><button class="dn">−</button><span class="t">${t ?? "–"}°</span><button class="up">+</button>`
+        : `<div class="ttl stat"><ha-icon icon="${on && M[mode] ? M[mode][2] : "mdi:air-conditioner"}"></ha-icon>${on ? `Klima · ${t ?? "–"}°` : "Klima · ugašena"}</div>
+           <button class="pw" title="${on ? "Ugasi" : "Upali"}"><ha-icon icon="mdi:power"></ha-icon></button>`}
     </div>`;
     const R = this.shadowRoot;
     const step = a.target_temp_step || 1;
@@ -790,7 +795,7 @@ class RipacAcChip extends HTMLElement {
     ttl.addEventListener("pointerup", () => {
       if (!lp) return;
       clearTimeout(lp);
-      if (!on) return more();
+      if (!on || part !== "controls") return more();
       const i = modes.indexOf(mode);
       setMode(modes[(i + 1) % modes.length]);
     });
@@ -803,7 +808,7 @@ class RipacAcChip extends HTMLElement {
         if (want !== t) setTimeout(() => this._svc("set_temperature", { temperature: want }), 1500);
       }
     };
-    R.querySelector(".pw").onclick = () => (on ? this._svc("set_hvac_mode", { hvac_mode: "off" }) : setMode("heat"));
+    if (R.querySelector(".pw")) R.querySelector(".pw").onclick = () => (on ? this._svc("set_hvac_mode", { hvac_mode: "off" }) : setMode("heat"));
 
   }
 }
@@ -860,7 +865,7 @@ window.customCards.push(
     [/^(.*) · prije (.+)$/, (m, a, b) => `${EXACT[a] || a} · ${b} ago`], [/^prije (.+)$/, "$1 ago"],
     [/^(\S[^·]*?) · $/, (m, a) => `${EXACT[a.trim()] || a} · `], [/Solarne kamere/g, "Solar cameras"], [/^Mjesečni/, "Monthly"],
     [/^Vlaga /, "Humidity "], [/^Potrošnja /, "Load "], [/^Bojler /, "Boiler "],
-    [/^Klima · ugašena$/, "AC · off"], [/^Grije$/, "Heating"], [/^Hladi$/, "Cooling"], [/^Suši$/, "Drying"], [/^Ventilator$/, "Fan"],
+    [/^Klima · ugašena$/, "AC · off"], [/^Klima · (\d+)°$/, "AC · $1°"], [/^Grije$/, "Heating"], [/^Hladi$/, "Cooling"], [/^Suši$/, "Drying"], [/^Ventilator$/, "Fan"],
     [/Niko nije u kući/g, "Nobody is home"], [/ · TPanel naoružan/g, " · TPanel armed"], [/kamere javljaju pokret/g, "cameras report motion"],
     [/Čuvanje je isključeno/g, "Guarding is off"], [/alarmi pauzirani/g, "alarms paused"], [/Alarmi i obavijesti o kretanju su pauzirani/g, "Alarms and motion alerts are paused"],
     [/put suh i prohodan/g, "road dry and passable"], [/voda na putu/g, "water on the road"], [/put poplavljen/g, "road flooded"], [/voda na placevima/g, "water on the plots"],
