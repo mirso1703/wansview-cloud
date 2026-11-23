@@ -810,3 +810,136 @@ window.customCards.push(
   { type: "ripac-security-card", name: "Ripač sigurnost", description: "Protokoli i režimi kuće" },
   { type: "ripac-una-card", name: "Ripač Una", description: "Vodostaj, prognoza, upozorenja i uzvodne stanice" }
 );
+
+// ---------- BS / EN dashboard translation (driven by input_boolean.sazetak_engleski) ----------
+(() => {
+  const EXACT = {
+    "Kamere": "Cameras", "Solarne kamere": "Solar cameras", "Svi snimci ›": "All recordings ›", "Sobe": "Rooms", "Vani": "Outside",
+    "Solar i baterija": "Solar & battery", "Kuća i održavanje": "House & maintenance", "Održavanje i zdravlje kuće": "Maintenance & house health",
+    "Sve OK": "All OK", "Održavanje": "Maintenance", "Dnevna": "Living room", "V soba": "Bedroom V", "M soba": "Bedroom M", "Tehnička": "Utility room",
+    "Kupatilo": "Bathroom", "Dvorište": "Yard", "Ulaz": "Entrance", "Iza": "Back", "Obala": "Riverbank", "Kuća Parking": "House parking",
+    // security
+    "Dolazak": "Arrive", "Odlazak": "Leave", "Noć": "Night", "Poplava": "Flood", "Čuvanje": "Guarding", "Obavijesti": "Notifications",
+    "Kuća prazna": "House empty", "Čuvam kuću": "Guarding the house", "Neko je tu": "Someone is home", "Gosti": "Guests", "Isključeno": "Off",
+    "Alarmi pauzirani": "Alarms paused", "TPanel alarm": "TPanel alarm", "Naoružan": "Armed", "Razoružan": "Disarmed", "AKTIVIRAN!": "TRIGGERED!",
+    "Alarm poplave": "Flood alarm", "Mirno": "Quiet", "AKTIVAN": "ACTIVE", "Javljam pokret": "Reporting motion", "Utišano": "Muted",
+    "Noćno gašenje": "Night lights-off", "Gasi vanjska svjetla": "Turns off outdoor lights", "Una na ekranu": "Una on lock screen",
+    "Kuća na ekranu": "House on lock screen", "Kuća je čuvana": "House is guarded", "Gosti su u vikendici": "Guests at the cottage",
+    "Ti si u vikendici": "You're at the cottage", "Neko je u dnevnoj": "Someone in the living room", "Pažnja": "Attention",
+    // una
+    "Una kod Ripča": "Una at Ripač", "NORMALNO": "NORMAL", "PRIPREMNO": "ALERT", "POPLAVA": "FLOOD", "PLACEVI": "PLOTS",
+    "Šta očekivati": "What to expect", "Vrijeme": "Weather", "Uzvodno": "Upstream", "Procjena iz prognoze kiše i uzvodnih stanica": "Estimate from rain forecast and upstream gauges",
+    "Danas": "Today", "Sutra": "Tomorrow", "pon": "Mon", "uto": "Tue", "sri": "Wed", "čet": "Thu", "pet": "Fri", "sub": "Sat", "ned": "Sun",
+    "suho": "dry", "izmjereno": "measured", "procjena po prognozi kiše": "estimate from rain forecast", "kiša": "rain",
+    "195 voda na putu": "195 water on road", "205 put plavi": "205 road floods", "sada": "now", "+1 dan": "+1 day", "+2 dana": "+2 days", "+3 dana": "+3 days",
+    "Žuto upozorenje": "Yellow warning", "Narandžasto upozorenje": "Orange warning", "Crveno upozorenje": "Red warning",
+    // solar
+    "Kuća radi na bateriji": "House is running on battery", "Ručno": "Manual", "miruje": "idle", "kuća": "house", "višak": "surplus",
+    "jeftina": "cheap", "skupa": "expensive", "mreža": "grid", "Solar danas": "Solar today", "Baterija": "Battery",
+    "☀️ dobar dan": "☀️ good day", "⛅ osrednje": "⛅ moderate", "☁️ slabo sunca": "☁️ little sun",
+    // internet / sky
+    "glavna veza": "main link", "bez veze": "no link", "Ruter": "Router", "4G rezerva": "4G backup", "ne odgovara": "not responding",
+    "Video sa solarnih kamera": "Video from solar cameras", "preuzima se": "downloading", "pauzirano – štedi 4G": "paused – saving 4G",
+    "Preko 4G rezerve": "Via 4G backup", "Starlink zaklonjen": "Starlink obstructed", "Vjerovatno povezan": "Probably connected",
+    "povezan": "connected", "vidno polje": "field of view", "prelet": "pass", "Vidljivi preleti": "Visible passes", "slab": "weak",
+    "osrednji": "fair", "dobar": "good", "odličan": "great", "✨ vedro": "✨ clear", "Tanjir": "Dish", "Ping": "Ping",
+    "Učitavam orbite Starlinka…": "Loading Starlink orbits…", "Nema vidljivih preleta u naredna 24 h.": "No visible passes in the next 24 h.",
+    "Orbite nedostupne": "Orbits unavailable",
+  };
+  const SUBS = [
+    [/^(.*) · prije (.+)$/, (m, a, b) => `${EXACT[a] || a} · ${b} ago`], [/^prije (.+)$/, "$1 ago"],
+    [/^Vlaga /, "Humidity "], [/^Potrošnja /, "Load "], [/^Bojler /, "Boiler "],
+    [/^Klima · ugašena$/, "AC · off"], [/^Klima · Grije$/, "AC · heating"], [/^Klima · Hladi$/, "AC · cooling"], [/^Klima · Suši$/, "AC · drying"], [/^Klima · Ventilator$/, "AC · fan"],
+    [/Niko nije u kući/g, "Nobody is home"], [/ · TPanel naoružan/g, " · TPanel armed"], [/kamere javljaju pokret/g, "cameras report motion"],
+    [/Čuvanje je isključeno/g, "Guarding is off"], [/alarmi pauzirani/g, "alarms paused"], [/Alarmi i obavijesti o kretanju su pauzirani/g, "Alarms and motion alerts are paused"],
+    [/put suh i prohodan/g, "road dry and passable"], [/voda na putu/g, "water on the road"], [/put poplavljen/g, "road flooded"], [/voda na placevima/g, "water on the plots"],
+    [/· miruje/g, "· steady"], [/raste ([\d.]+) cm\/h/g, "rising $1 cm/h"], [/opada ([\d.]+) cm\/h/g, "falling $1 cm/h"],
+    [/Kiša upravo pada i trebala bi stati oko (\S+)/g, "Rain is falling now and should stop around $1"], [/\(još ~(\d+) mm\)/g, "(another ~$1 mm)"],
+    [/Kiša bi trebala početi /g, "Rain should start "], [/Ponovo bi trebala padati /g, "It should rain again "], [/ i padati /g, " and last "], [/, do ~/g, ", until ~"],
+    [/oko sat vremena/g, "about an hour"], [/(\d+) sata\b/g, "$1 hours"], [/(\d+) sati\b/g, "$1 hours"], [/ oko (\d\d:\d\d)/g, " around $1"],
+    [/Ukupno ~(\d+) mm u 3 dana, pa bi Una mogla porasti do oko/g, "About $1 mm in 3 days, so the Una could rise to about"],
+    [/\(za 3 dana\)/g, "(in 3 days)"], [/\(prekosutra\)/g, "(the day after tomorrow)"], [/\(sutra\)/g, "(tomorrow)"],
+    [/ Put ostaje prohodan\./g, " The road stays passable."], [/Put ostaje prohodan\./g, "The road stays passable."], [/ Voda bi mogla izaći na put\./g, " Water could reach the road."],
+    [/Put bi mogao biti poplavljen\./g, "The road could flood."], [/Bez značajne kiše – Una ostaje mirna oko/g, "No significant rain – the Una stays steady at about"],
+    [/Bez značajne kiše \((\d+) mm u 3 dana\) – Una polako opada, oko/g, "No significant rain ($1 mm in 3 days) – the Una slowly falls, to about"], [/ za 3 dana\./g, " in 3 days."],
+    [/Uzvodno brzo raste/g, "Rising fast upstream"], [/val stiže do Ripča za 4–9 h/g, "the wave reaches Ripač in 4–9 h"], [/Dio padavina je snijeg, pa porast može kasniti\./g, "Part of it is snow, so the rise may be delayed."],
+    [/\bupozorenje\b/g, "warning"], [/hladnoća/g, "cold"], [/vjetar/g, "wind"], [/grmljavina/g, "thunderstorm"], [/poledica/g, "ice"], [/snijeg/g, "snow"], [/vrućina/g, "heat"],
+    [/\bsutra\b/g, "tomorrow"], [/\bdanas\b/g, "today"], [/\bu srijedu\b/g, "on Wednesday"], [/\bu četvrtak\b/g, "on Thursday"], [/\bu petak\b/g, "on Friday"],
+    [/\bu subotu\b/g, "on Saturday"], [/\bu nedjelju\b/g, "on Sunday"], [/\bu ponedjeljak\b/g, "on Monday"], [/\bu utorak\b/g, "on Tuesday"],
+    [/Kuća radi na solaru/g, "House is running on solar"], [/, višak puni bateriju/g, ", surplus charges the battery"], [/Kuća je na mreži/g, "House is on the grid"], [/, solar puni bateriju/g, ", solar charges the battery"],
+    [/^prognoza /, "forecast "], [/ cikl\./g, " cycles"], [/^daje /, "gives "], [/^puni /, "charging "],
+    [/(\d+) uređaja/g, "$1 devices"], [/ · AP offline/g, " · AP offline"], [/^čeka /, "standby "], [/^AKTIVNA /, "ACTIVE "], [/4G ovaj mj\./g, "4G this month"], [/(\d+) nova/g, "$1 new"],
+    [/u vidnom polju/g, "in view"], [/iznad horizonta/g, "above horizon"], [/^(danas|sutra) · za (.+)$/, (m, d, r) => `${d === "danas" ? "today" : "tomorrow"} · in ${r}`],
+    [/satelita iznad horizonta, nijedan u vidnom polju tanjira/g, "satellites above horizon, none in the dish's view"],
+  ];
+  const orig = new WeakMap();
+  const isEN = () => document.querySelector("home-assistant")?.hass?.states["input_boolean.sazetak_engleski"]?.state === "on";
+  const trText = (t) => {
+    const k = t.trim();
+    if (!k) return t;
+    if (EXACT[k]) return t.replace(k, EXACT[k]);
+    let o = t;
+    for (const [re, rep] of SUBS) o = o.replace(re, rep);
+    return o;
+  };
+  const svgCache = new Map();
+  const trImg = (img, en) => {
+    const src = img.getAttribute("src") || "";
+    if (en) {
+      if (!src.startsWith("data:image/svg+xml;base64,") || img.dataset.bsSrc) return;
+      let out = svgCache.get(src);
+      if (!out) {
+        try {
+          let svg = decodeURIComponent(escape(atob(src.slice(26))));
+          const before = svg;
+          svg = svg.replace(/>([^<>]{2,40})</g, (m, t) => (EXACT[t.trim()] ? `>${EXACT[t.trim()]}<` : m));
+          out = svg === before ? src : "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
+        } catch (e) { out = src; }
+        svgCache.set(src, out);
+      }
+      if (out !== src) { img.dataset.bsSrc = src; img.setAttribute("src", out); }
+    } else if (img.dataset.bsSrc) { img.setAttribute("src", img.dataset.bsSrc); delete img.dataset.bsSrc; }
+  };
+  const walk = (node, en) => {
+    if (!node) return;
+    if (node.nodeType === 3) {
+      if (en) {
+        const cur = node.nodeValue;
+        if (orig.has(node) && orig.get(node).en === cur) return;
+        const t = trText(cur);
+        if (t !== cur) { orig.set(node, { bs: cur, en: t }); node.nodeValue = t; }
+      } else if (orig.has(node)) {
+        const o = orig.get(node);
+        if (node.nodeValue === o.en) node.nodeValue = o.bs;
+        orig.delete(node);
+      }
+      return;
+    }
+    if (node.nodeType !== 1 && node.nodeType !== 11) return;
+    const tag = node.tagName;
+    if (tag === "SCRIPT" || tag === "STYLE" || tag === "HA-SIDEBAR" || tag === "HA-MORE-INFO-DIALOG") return;
+    if (tag === "IMG") trImg(node, en);
+    if (node.shadowRoot) walk(node.shadowRoot, en);
+    for (let c = node.firstChild; c; c = c.nextSibling) walk(c, en);
+  };
+  let last = null;
+  window.__ripacTr = (root) => { const en = isEN(); if (en || last) walk(root || document.querySelector("home-assistant"), en); };
+  const tick = () => {
+    const en = isEN();
+    if (!/ripac-|\/lovelace/.test(location.pathname)) { last = en; return; }
+    if (en || last) walk(document.querySelector("home-assistant"), en);
+    last = en;
+  };
+  setInterval(tick, 1200);
+  // translate custom cards right after each render
+  for (const name of ["ripac-security-card", "ripac-una-card", "ripac-solar-card", "ripac-care-card", "ripac-net-card", "ripac-ac-chip", "ripac-sky-card"]) {
+    const run = () => {
+      const C = customElements.get(name);
+      if (!C || C.prototype.__trWrapped) return;
+      const r = C.prototype._render;
+      C.prototype._render = function (...a) { const out = r.apply(this, a); if (isEN() && this.shadowRoot) walk(this.shadowRoot, true); return out; };
+      C.prototype.__trWrapped = true;
+    };
+    customElements.whenDefined(name).then(run);
+  }
+})();
