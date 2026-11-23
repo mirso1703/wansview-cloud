@@ -432,6 +432,13 @@ class RipacUnaCard extends RipacBase {
       .wdr { font-size:10.5px; color:var(--secondary-text-color); margin-top:2px; }
       .wdw { position:absolute; top:4px; right:4px; width:18px; height:18px; border-radius:50%; background:var(--c); display:flex; align-items:center; justify-content:center; }
       .wdw ha-icon { --mdc-icon-size:12px; color:#000; }
+      .hd1 { display:flex; align-items:center; gap:10px; }
+      .shield.sm { width:38px; height:38px; border-radius:12px; } .shield.sm ha-icon { --mdc-icon-size:22px; }
+      .hd1 .ttl { font-size:15px; white-space:nowrap; }
+      .hd1 .big { display:flex; align-items:baseline; gap:3px; margin-left:4px; cursor:pointer; } .hd1 .lvl { font-size:24px; }
+      .tr { display:flex; align-items:center; gap:1px; color:var(--tc); } .tr ha-icon { --mdc-icon-size:22px; } .tr small { font-size:11px; font-weight:700; }
+      .hd1 .badge { margin-left:auto; }
+      @media (max-width:380px) { .hd1 .ttl { display:none; } }
       .legend2 { display:flex; gap:12px; flex-wrap:wrap; font-size:10.5px; color:var(--secondary-text-color); margin-top:2px; }
       .legend2 i { display:inline-block; width:10px; height:3px; border-radius:2px; margin-right:5px; vertical-align:middle; }
       .legend2 i.d { background:repeating-linear-gradient(90deg,#64b5f6 0 4px,transparent 4px 7px); }
@@ -440,10 +447,12 @@ class RipacUnaCard extends RipacBase {
       .exp ha-icon { color:var(--c); --mdc-icon-size:20px; flex:none; margin-top:1px; }
       .exp small { display:block; font-size:10.5px; color:var(--secondary-text-color); margin-top:3px; }
     </style><ha-card>
-      <div class="hd" style="margin-bottom:4px"><div class="shield" style="--c:${c}"><ha-icon icon="mdi:waves"></ha-icon></div>
-        <div style="flex:1"><div class="ttl">Una kod Ripča</div><div class="sub">${st ? `${st[2]} · ${trend}` : "nema podataka"}</div></div>
+      <div class="hd1"><div class="shield sm" style="--c:${c}"><ha-icon icon="mdi:waves"></ha-icon></div>
+        <div class="ttl">Una kod Ripča</div>
+        <div class="lv big"><span class="lvl">${isNaN(l) ? "–" : l.toFixed(1)}</span><span class="unit">cm</span></div>
+        <div class="tr" style="--tc:${tr >= 1 ? "#ef5350" : tr <= -1 ? "#42a5f5" : "var(--secondary-text-color)"}" title="${trend}">
+          <ha-icon icon="${tr >= 3 ? "mdi:arrow-up-bold" : tr >= 1 ? "mdi:arrow-top-right" : tr <= -3 ? "mdi:arrow-down-bold" : tr <= -1 ? "mdi:arrow-bottom-right" : "mdi:arrow-right"}"></ha-icon>${Math.abs(tr) >= 1 ? `<small>${tr > 0 ? "+" : ""}${tr.toFixed(1)}</small>` : ""}</div>
         ${st ? `<div class="badge" style="--c:${c}">${st[1]}</div>` : ""}</div>
-      <div class="big"><span class="lvl">${isNaN(l) ? "–" : l.toFixed(1)}</span><span class="unit">cm</span></div>
       ${this._spark(c, pred)}
       ${ex ? `<div class="lbl">Šta očekivati</div><div class="exp" style="--c:${ex.col}"><ha-icon icon="${ex.icon}"></ha-icon><div>${ex.txt}<small>Procjena iz prognoze kiše i uzvodnih stanica</small></div></div>` : ""}
 
@@ -457,7 +466,7 @@ class RipacUnaCard extends RipacBase {
       if (w > 0 && Math.abs(w - (this._cw || 0)) > 4) { this._cw = w; requestAnimationFrame(() => this._render()); return; }
       if (!this._ro) { this._ro = new ResizeObserver(() => { const nw = this.shadowRoot.querySelector("svg.spark")?.getBoundingClientRect().width; if (nw && Math.abs(nw - (this._cw || 0)) > 4) { this._cw = nw; this._render(); } }); this._ro.observe(this); }
     }
-    this.shadowRoot.querySelector(".big").addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: UNA }, bubbles: true, composed: true })));
+    this.shadowRoot.querySelector(".big")?.addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: UNA }, bubbles: true, composed: true })));
     this.shadowRoot.querySelector(".wk")?.addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: "weather.home" }, bubbles: true, composed: true })));
   }
 }
