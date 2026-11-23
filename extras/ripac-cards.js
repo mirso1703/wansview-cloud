@@ -338,18 +338,17 @@ class RipacUnaCard extends RipacBase {
     return sp.filter((x) => x.mm >= 1);
   }
   _rainText() {
-    const sp = this._rainSpells();
     if (!this._wxh) return "";
-    if (!sp.length) return "Ne očekuje se kiša u naredna 2 dana.";
+    const sp = this._rainSpells();
+    if (!sp.length) return "";
     const hm = (t) => new Date(t).toLocaleTimeString("bs-BA", { hour: "2-digit", minute: "2-digit" });
     const day = (t) => { const d = new Date(t), n = new Date(), tm = new Date(); tm.setDate(n.getDate() + 1);
-      return d.toDateString() === n.toDateString() ? "danas" : d.toDateString() === tm.toDateString() ? "sutra" : DAYS[d.getDay()]; };
-    const dur = (a, b) => { const hh = Math.round((b - a) / 3600e3) + 1; return hh >= 24 ? `${Math.round(hh / 24 * 10) / 10} dana` : `${hh} h`; };
+      return d.toDateString() === n.toDateString() ? "danas" : d.toDateString() === tm.toDateString() ? "sutra" : { ned: "u nedjelju", pon: "u ponedjeljak", uto: "u utorak", sri: "u srijedu", "čet": "u četvrtak", pet: "u petak", sub: "u subotu" }[DAYS[d.getDay()]]; };
+    const hrs = (a, b) => { const h = Math.round((b - a) / 3600e3) + 1; return h === 1 ? "oko sat vremena" : h < 5 ? `${h} sata` : `${h} sati`; };
     return sp.slice(0, 2).map((x, i) => {
-      const now = x.start <= Date.now() + 1800e3;
-      const end = x.end + 3600e3;
-      const what = now ? `Kiša pada sada i trajat će do ~${hm(end)}${day(end) !== "danas" ? ` (${day(end)})` : ""} – još ${dur(Date.now(), x.end)}` : `${i ? "Zatim " : ""}${i ? day(x.start) : day(x.start).charAt(0).toUpperCase() + day(x.start).slice(1)} ${hm(x.start)}–${hm(end)} (${dur(x.start, x.end)})`;
-      return `${what}, ~${Math.round(x.mm)} mm.`;
+      const end = x.end + 3600e3, mm = Math.max(1, Math.round(x.mm));
+      if (x.start <= Date.now() + 1800e3) return `Kiša upravo pada i trebala bi stati oko ${hm(end)}${day(end) !== "danas" ? ` ${day(end)}` : ""} (još ~${mm} mm).`;
+      return `${i ? "Ponovo bi trebala padati" : "Kiša bi trebala početi"} ${day(x.start)} oko ${hm(x.start)} i padati ${hrs(x.start, x.end)}, do ~${hm(end)} (~${mm} mm).`;
     }).join(" ");
   }
   _expect(l, tr, wx, prog, pred) {
@@ -364,10 +363,10 @@ class RipacUnaCard extends RipacBase {
       txt = `Uzvodno brzo raste (${wave.map(([n, d]) => `${n} +${Math.round(d)} cm`).join(", ")}) – val stiže do Ripča za 4–9 h.`;
       col = "#ffb300"; icon = "mdi:waves-arrow-up";
     } else if (peak - l >= 3) {
-      txt = `Kiša ${Math.round(rain3)} mm u 3 dana – Una bi mogla porasti do oko <b>${peak} cm</b>${pkDay ? ` (${pkDay})` : ""}.`;
+      txt = `${this._rainText() || ""} Ukupno ~${Math.round(rain3)} mm u 3 dana, pa bi Una mogla porasti do oko <b>${peak} cm</b>${pkDay ? ` (${pkDay})` : ""}.`;
       col = "#42a5f5"; icon = "mdi:trending-up";
     } else {
-      txt = end < l - 2 ? `Bez značajne kiše (${Math.round(rain3)} mm u 3 dana) – Una polako opada, oko <b>${end} cm</b> za 3 dana.` : `Bez značajne kiše – Una ostaje mirna oko <b>${Math.round(l)} cm</b>.`;
+      txt = (this._rainText() ? this._rainText() + " " : "") + (end < l - 2 ? `Bez značajne kiše (${Math.round(rain3)} mm u 3 dana) – Una polako opada, oko <b>${end} cm</b> za 3 dana.` : `Bez značajne kiše – Una ostaje mirna oko <b>${Math.round(l)} cm</b>.`);
     }
     const top = Math.max(peak, l);
     if (top >= 205) { col = "#e53935"; icon = "mdi:home-flood"; txt += " <b>Put bi mogao biti poplavljen.</b>"; }
@@ -447,7 +446,7 @@ class RipacUnaCard extends RipacBase {
       <div class="big"><span class="lvl">${isNaN(l) ? "–" : l.toFixed(1)}</span><span class="unit">cm</span></div>
       ${this._spark(c, pred)}
       ${ex ? `<div class="lbl">Šta očekivati</div><div class="exp" style="--c:${ex.col}"><ha-icon icon="${ex.icon}"></ha-icon><div>${ex.txt}<small>Procjena iz prognoze kiše i uzvodnih stanica</small></div></div>` : ""}
-      ${this._rainText() ? `<div class="exp" style="--c:#64b5f6;margin-top:6px;background:rgba(100,181,246,.10)"><ha-icon icon="mdi:weather-rainy"></ha-icon><div>${this._rainText()}</div></div>` : ""}
+
       ${wx.length ? `<div class="lbl">Vrijeme</div><div class="wk">${days}</div>` : ""}
       ${wrows ? `<div class="fc2" style="margin-top:8px">${wrows}</div>` : ""}
       ${ups ? `<div class="lbl">Uzvodno</div><div class="up">${ups}</div>` : ""}
