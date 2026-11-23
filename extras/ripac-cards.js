@@ -670,15 +670,15 @@ class RipacSolarCard extends RipacBase {
     const socCol = soc < 25 ? "#ef5350" : soc < 50 ? "#ffb300" : C.bat;
     const R = 34, circ = 2 * Math.PI * R;
     const batIcon = soc >= 95 ? "mdi:battery" : bat > 20 ? `mdi:battery-charging-${Math.max(10, Math.round(soc / 10) * 10)}` : `mdi:battery-${Math.max(10, Math.round(soc / 10) * 10)}`;
-    const path = (id, d, on, col, rev) => `<path id="${id}" d="${d}" fill="none" stroke="${on ? col : "rgba(255,255,255,.10)"}" stroke-width="${on ? 3 : 2}" stroke-linecap="round" ${on ? `style="filter:drop-shadow(0 0 4px ${col})"` : ""}/>` +
+    const path = (id, d, on, col, rev) => `<path id="${id}" d="${d}" fill="none" stroke="${on ? col : "rgba(255,255,255,.10)"}" stroke-width="${on ? 3 : 2}" stroke-linecap="butt" ${on ? `style="filter:drop-shadow(0 0 4px ${col})"` : ""}/>` +
       (on ? [0, 0.5].map((b) => `<circle r="3.2" fill="#fff"><animateMotion dur="1.6s" begin="${b * 1.6}s" repeatCount="indefinite" keyPoints="${rev ? "1;0" : "0;1"}" keyTimes="0;1" calcMode="linear"><mpath href="#${id}"/></animateMotion></circle>`).join("") : "");
     const pos = (x, y) => `left:${(x / 320) * 100}%;top:${(y / 250) * 100}%`;
     const nd = (x, y, col, icon, val, sub, on) => `<div class="nd ${on ? "on" : ""}" style="${pos(x, y)};--c:${col}"><ha-icon icon="${icon}"></ha-icon><div class="nv">${val}</div>${sub ? `<div class="nsb">${sub}</div>` : ""}</div>`;
     const svg = `<div class="fw"><svg viewBox="0 0 320 250">
-      ${path("p1", "M160,74 L160,105", f.sol, C.sol)}
-      ${path("p2", "M74,125 L140,125", f.grid, C.grid, grid < 0)}
-      ${path("p3", "M180,125 L246,125", f.load, C.load)}
-      ${path("p4", "M160,145 L160,176", f.bat, C.bat, bat < 0)}
+      ${path("p1", "M160,77 L160,100", f.sol, C.sol)}
+      ${path("p2", "M77,125 L135,125", f.grid, C.grid, grid < 0)}
+      ${path("p3", "M185,125 L243,125", f.load, C.load)}
+      ${path("p4", "M160,150 L160,173", f.bat, C.bat, bat < 0)}
       <circle cx="160" cy="210" r="${R}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="4"/>
       <circle cx="160" cy="210" r="${R}" fill="none" stroke="${socCol}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${(soc / 100) * circ} ${circ}" transform="rotate(-90 160 210)"/>
     </svg>
@@ -704,7 +704,7 @@ class RipacSolarCard extends RipacBase {
       .nd ha-icon { --mdc-icon-size:22px; color:rgba(255,255,255,.45); } .nd.on ha-icon { color:var(--c); }
       .nv { font-size:15px; font-weight:800; color:#fff; line-height:1.15; margin-top:1px; }
       .nsb { font-size:10px; color:#a9b6cf; }
-      .nd.ctr { width:13.5%; background:rgba(255,255,255,.08); } .nd.ctr ha-icon { --mdc-icon-size:15px; color:#cfd8ea; } .nd.ctr .cv { font-size:11px; font-weight:700; color:#cfd8ea; line-height:1.1; }
+      .nd.ctr { width:13.5%; background:#262d3d; border:1.5px solid rgba(255,255,255,.14); box-sizing:border-box; } .nd.ctr ha-icon { --mdc-icon-size:15px; color:#cfd8ea; } .nd.ctr .cv { font-size:11px; font-weight:700; color:#cfd8ea; line-height:1.1; }
       .top { flex-wrap:nowrap; } .top .hdr { flex:1 1 auto; min-width:0; } .top .hdr .ttl { line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; } .top .pill { flex:0 0 auto; }
       .use { margin-top:10px; padding:10px 12px; border-radius:12px; background:rgba(255,255,255,.06); }
       .use .ut { display:flex; align-items:baseline; justify-content:space-between; } .use .ul { font-size:10.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; color:#a9b6cf; }
