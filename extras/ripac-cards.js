@@ -1296,7 +1296,7 @@ class RipacZivotinjeCard extends HTMLElement {
       .ph { cursor:zoom-in; }
       .lb { position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.88); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; box-sizing:border-box; cursor:zoom-out; animation:lbIn .15s ease-out; }
       @keyframes lbIn { from { opacity:0 } to { opacity:1 } }
-      .lb img { max-width:100%; max-height:calc(100% - 90px); object-fit:contain; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,.6); image-rendering:auto; }
+      .lb img { width:min(92vw, 560px); height:min(calc(100vh - 170px), 560px); object-fit:contain; background:#000; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,.6); image-rendering:auto; }
       .lb .cap { color:#fff; text-align:center; margin-top:12px; max-width:560px; }
       .lb .cap b { font-size:17px; } .lb .cap div { font-size:13px; opacity:.8; margin-top:3px; }
       .lb .x { position:absolute; top:calc(12px + env(safe-area-inset-top)); right:12px; width:38px; height:38px; border-radius:50%; border:0; background:rgba(255,255,255,.18); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
@@ -1325,7 +1325,7 @@ class RipacZivotinjeCard extends HTMLElement {
     const css = this.shadowRoot.querySelector("style").textContent.split("\n").filter((l) => /\.lb|lbIn|from \{/.test(l)).join("\n").replace(/\.lb\b/g, "#ripac-lb");
     lb.innerHTML = `<style>${css}</style><button class="x" title="Zatvori"><ha-icon icon="mdi:close"></ha-icon></button>
       <img src="${src}" alt="">
-      <div class="cap"><b>${vEsc(o.ime || (o.vrsta || "Životinja"))}</b>
+      <div class="cap"><b>${vEsc(o.ime || "Bez imena")}</b>
         <div>${vEsc(o.vrsta || "")}${o.divlja === "da" ? " · divlja" : ""} · viđena ${vEsc(o.broj || "1")}×</div>
         ${o.opis ? `<div>${vEsc(o.opis)}</div>` : ""}
         <div>Zadnji put: ${vEsc(o.zadnje || "")}${o.prvo ? ` · prvi put: ${vEsc(o.prvo)}` : ""}</div></div>`;
