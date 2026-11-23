@@ -1232,6 +1232,85 @@ class RipacMotionLabel extends HTMLElement {
 }
 
 if (!customElements.get("ripac-motion-label")) customElements.define("ripac-motion-label", RipacMotionLabel);
+
+/* ---------- Životinje: galerija poznatih životinja (todo.zivotinje) ---------- */
+class RipacZivotinjeCard extends HTMLElement {
+  setConfig(c) { this._c = Object.assign({ entity: "todo.zivotinje" }, c || {}); if (!this.shadowRoot) this.attachShadow({ mode: "open" }); }
+  getCardSize() { return 4; }
+  set hass(h) {
+    this._hass = h;
+    const st = h.states[this._c.entity]; const key = st ? st.state + st.last_updated : "";
+    const a = this.shadowRoot && this.shadowRoot.activeElement;
+    if (key !== this._key && !(a && a.tagName === "INPUT")) { this._key = key; this._load(); }
+  }
+  async _load() {
+    try {
+      const r = await this._hass.callWS({ type: "call_service", domain: "todo", service: "get_items", target: { entity_id: this._c.entity }, return_response: true });
+      this._items = (r.response[this._c.entity] || {}).items || [];
+    } catch (e) { this._items = []; }
+    this._img = {};
+    await Promise.all(this._items.map(async (it) => {
+      const k = vParse(it.description).kljuc; if (!k) return;
+      try { const r = await this._hass.callWS({ type: "media_source/resolve_media", media_content_id: `media-source://media_source/local/zivotinje/${k}.jpg`, expires: 3600 }); this._img[it.uid] = r.url; } catch (e) { /* none */ }
+    }));
+    this._render();
+  }
+  async _setName(it, name) {
+    const d = (it.description || "").replace(/^ime:.*$/m, `ime: ${name}`);
+    const o = vParse(it.description);
+    const title = name ? `${name} · ${o.vrsta || ""}` : it.summary;
+    await this._hass.callService("todo", "update_item", { item: it.uid, rename: title, description: d }, { entity_id: this._c.entity });
+  }
+  _render() {
+    if (!this._hass) return;
+    const items = (this._items || []).map((it) => ({ it, o: vParse(it.description) }))
+      .sort((a, b) => (parseInt(b.o.broj) || 0) - (parseInt(a.o.broj) || 0));
+    const tiles = items.map(({ it, o }) => `<div class="z ${o.divlja === "da" ? "wild" : ""}" data-uid="${it.uid}">
+        ${this._img[it.uid] ? `<img src="${this._img[it.uid]}" loading="lazy">` : `<div class="noimg"><ha-icon icon="mdi:paw"></ha-icon></div>`}
+        <div class="b">
+          <input class="nm" value="${vEsc(o.ime)}" placeholder="Daj ime…">
+          <div class="vr">${vEsc(o.vrsta || "")}${o.divlja === "da" ? " · divlja" : ""} · ${vEsc(o.broj || "1")}×</div>
+          <div class="op">${vEsc(o.opis || "")}</div>
+          <div class="zd">${vEsc((o.zadnje || "").replace(/^(\d\d\.\d\d)\.\d{4}/, "$1."))}</div>
+        </div>
+        <button class="del" title="Obriši"><ha-icon icon="mdi:close"></ha-icon></button>
+      </div>`).join("") || `<div class="empty">Još nema životinja. Kad ih kamera vidi, pojave se ovdje — onda im daj ime.</div>`;
+    this.shadowRoot.innerHTML = `<style>
+      ha-card { padding:14px 14px 12px; }
+      .hd { display:flex; align-items:center; gap:8px; font-size:16px; font-weight:600; margin-bottom:10px; }
+      .hd ha-icon { --mdc-icon-size:22px; color:var(--primary-color); } .hd .n { margin-left:auto; font-size:12px; font-weight:500; color:var(--secondary-text-color); }
+      .g { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+      .z { position:relative; border-radius:14px; overflow:hidden; background:rgba(127,127,127,.1); border:1px solid rgba(127,127,127,.14); }
+      .z.wild { border-color:color-mix(in srgb,#ff9800 45%,transparent); }
+      .z img, .noimg { display:block; width:100%; aspect-ratio:4/3; object-fit:cover; }
+      .noimg { display:flex; align-items:center; justify-content:center; color:var(--secondary-text-color); } .noimg ha-icon { --mdc-icon-size:34px; }
+      .b { padding:8px 9px 9px; }
+      .nm { width:100%; box-sizing:border-box; font-size:14px; font-weight:600; color:var(--primary-text-color); background:transparent; border:1px solid transparent; border-radius:8px; padding:3px 5px; margin-left:-5px; }
+      .nm:focus { border-color:var(--primary-color); outline:none; background:rgba(127,127,127,.12); }
+      .nm::placeholder { color:var(--primary-color); font-weight:500; }
+      .vr { font-size:11.5px; color:var(--secondary-text-color); margin-top:1px; } .z.wild .vr { color:#ffa726; }
+      .op { font-size:11.5px; line-height:1.3; margin-top:4px; color:var(--primary-text-color); opacity:.85; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+      .zd { font-size:10.5px; color:var(--secondary-text-color); margin-top:4px; }
+      .del { position:absolute; top:6px; right:6px; width:26px; height:26px; border-radius:50%; border:0; background:rgba(0,0,0,.45); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+      .del ha-icon { --mdc-icon-size:16px; }
+      .empty { font-size:13px; color:var(--secondary-text-color); padding:4px 2px 8px; }
+    </style><ha-card>
+      <div class="hd"><ha-icon icon="mdi:paw"></ha-icon>Životinje<span class="n">${items.length} zapamćeno</span></div>
+      <div class="g">${tiles}</div>
+    </ha-card>`;
+    this.shadowRoot.querySelectorAll(".z").forEach((el) => {
+      const it = this._items.find((x) => x.uid === el.dataset.uid);
+      const nm = el.querySelector(".nm");
+      nm.addEventListener("change", () => this._setName(it, nm.value.trim()));
+      nm.addEventListener("keydown", (e) => { if (e.key === "Enter") nm.blur(); });
+      el.querySelector(".del").addEventListener("click", async () => {
+        if (confirm("Obrisati ovu životinju iz liste?")) await this._hass.callService("todo", "remove_item", { item: [it.uid] }, { entity_id: this._c.entity });
+      });
+    });
+  }
+}
+
+if (!customElements.get("ripac-zivotinje-card")) customElements.define("ripac-zivotinje-card", RipacZivotinjeCard);
 if (!customElements.get("ripac-osobe-card")) customElements.define("ripac-osobe-card", RipacOsobeCard);
 if (!customElements.get("ripac-vozila-card")) customElements.define("ripac-vozila-card", RipacVozilaCard);
 if (!customElements.get("ripac-security-card")) customElements.define("ripac-security-card", RipacSecurityCard);
