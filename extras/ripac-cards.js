@@ -661,6 +661,7 @@ class RipacSolarCard extends RipacBase {
       ha-card.sol { background:radial-gradient(110% 80% at 50% 35%,#24304a,#121826 70%); color:#fff; }
       .sol .ttl { color:#fff; } .sol .sub { color:#a9b6cf; }
       .top { display:flex; align-items:center; gap:8px; }
+      .ph { display:block; width:calc(100% + 24px); margin:-10px -12px 10px; aspect-ratio:16/9; object-fit:cover; border-radius:14px 14px 0 0; cursor:zoom-in; }
       .pill { font-size:11.5px; font-weight:700; padding:5px 10px; border-radius:10px; background:rgba(255,255,255,.08); color:#e8eefc; cursor:pointer; white-space:nowrap; }
       .pill.ai { display:flex; align-items:center; gap:4px; } .pill.ai.on { background:rgba(105,240,174,.18); color:#69f0ae; }
       .pill ha-icon { --mdc-icon-size:15px; }
@@ -898,6 +899,13 @@ class RipacVozilaCard extends HTMLElement {
       const r = await this._hass.callWS({ type: "call_service", domain: "todo", service: "get_items", target: { entity_id: this._c.entity }, return_response: true });
       this._items = (r.response[this._c.entity] || {}).items || [];
     } catch (e) { this._items = []; }
+    this._img = this._img || {};
+    await Promise.all(this._items.map(async (it) => {
+      try {
+        const r = await this._hass.callWS({ type: "media_source/resolve_media", media_content_id: `media-source://media_source/local/vozila/${vPlate(it.summary)}.jpg`, expires: 3600 });
+        this._img[it.summary] = r.url + (r.url.includes("?") ? "&" : "?") + "v=" + encodeURIComponent((it.description || "").length + (vParse(it.description)["viđeno"] || ""));
+      } catch (e) { this._img[it.summary] = null; }
+    }));
     this._render();
   }
   async _svc(service, data) { await this._hass.callService("todo", service, data, { entity_id: this._c.entity }); }
@@ -924,7 +932,9 @@ class RipacVozilaCard extends HTMLElement {
       .sort((a, b) => (a.o.poznato === "da") - (b.o.poznato === "da") || (b.o["viđeno"] || "").localeCompare(a.o["viđeno"] || ""));
     const rows = items.map(({ it, o }) => {
       const kn = o.poznato === "da";
+      const im = (this._img || {})[it.summary];
       return `<div class="v ${kn ? "kn" : "un"}" data-uid="${it.uid}">
+        ${im ? `<img class="ph" src="${im}" onerror="this.remove()" loading="lazy">` : ""}
         <div class="top"><input class="plate" data-plate value="${vEsc(it.summary)}" spellcheck="false">
           <span class="tag">${kn ? "Poznato" : "Nepoznato"}</span>
           <label class="sw"><input type="checkbox" data-k="poznato" ${kn ? "checked" : ""}><i></i></label>
@@ -977,6 +987,7 @@ class RipacVozilaCard extends HTMLElement {
         : `<button class="addb">+ Dodaj vozilo</button>`}
     </ha-card>`;
     const R = this.shadowRoot;
+    R.querySelectorAll(".ph").forEach((im) => im.addEventListener("click", () => window.open(im.src, "_blank")));
     R.querySelectorAll(".v").forEach((row) => {
       const uid = row.dataset.uid;
       row.querySelectorAll("input").forEach((i) => i.addEventListener("change", () => this._save(uid)));
