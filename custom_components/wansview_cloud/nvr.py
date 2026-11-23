@@ -68,6 +68,7 @@ class Nvr:
         self.today: dict[str, int] = {}
         self._day = datetime.now().strftime("%Y-%m-%d")
         self.last_files: dict[str, dict[str, str]] = {}
+        self.video_enabled = True  # off while on 4G backup: keep only the (small) images
 
     def add_alarm(self, cam_name: str, alarm: dict[str, Any]) -> None:
         did, cts = alarm.get("did"), str(alarm.get("cts"))
@@ -97,6 +98,9 @@ class Nvr:
             for kind, url in p["urls"].items():
                 if kind in p["done"]:
                     continue
+                if kind == "video" and not self.video_enabled:
+                    p["skipped"] = True
+                    continue
                 try:
                     async with session.get(url, timeout=60) as r:
                         if r.status != 200:
@@ -115,7 +119,8 @@ class Nvr:
                     await self.remux(path)
                 p["done"].add(kind)
                 self.last_files.setdefault(p["did"], {})[kind] = path
-            all_done = p["done"] >= set(p["urls"])
+            wanted = set(p["urls"]) - ({"video"} if not self.video_enabled else set())
+            all_done = p["done"] >= wanted
             if all_done or time.time() - p["first"] > RETRY_FOR:
                 self.pending.pop(key)
                 self.saved.add(key)

@@ -1,5 +1,5 @@
 DOMAIN = "wansview_cloud"
-PLATFORMS = ["binary_sensor", "sensor", "image"]
+PLATFORMS = ["binary_sensor", "sensor", "image", "switch"]
 CONF_AGENT_TOKEN = "agent_token"
 CONF_EVENT_PATH = "event_path"
 CONF_MOTION_HOLD = "motion_hold"
