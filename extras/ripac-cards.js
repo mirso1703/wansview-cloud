@@ -1074,14 +1074,16 @@ class RipacOsobeCard extends HTMLElement {
   _opts(cur, phones, macs) {
     const all = this._byMac();
     let o = `<option value="">— bez mobitela —</option>`;
-    if (cur && !phones.some(([mac]) => mac === cur)) {
+    /* spremljeni: samo MAC, a IP samo ako je uređaj sada na WiFi-ju */
+    if (cur) {
       const x = all[cur];
-      const ip = x && x.attributes.ip ? x.attributes.ip : cur;
-      o += `<option value="${vEsc(cur)}" selected>${vEsc(ip)} · nije na WiFi-ju</option>`;
+      const on = x && x.state === "home";
+      o += `<option value="${vEsc(cur)}" selected>${vEsc(cur)}${on && x.attributes.ip ? " · " + vEsc(x.attributes.ip) : " · nije na WiFi-ju"}</option>`;
     }
+    /* za povezivanje: IP i MAC */
     phones.forEach(([mac, x]) => {
-      if (Object.values(macs).some((v) => v === mac && v !== cur)) return;
-      o += `<option value="${mac}" ${mac === cur ? "selected" : ""}>${vEsc(x.attributes.ip || mac)} · na WiFi-ju ${vEsc(this._t(x))}</option>`;
+      if (mac === cur || Object.values(macs).includes(mac)) return;
+      o += `<option value="${mac}">${vEsc(x.attributes.ip || "?")} · ${mac} · ${vEsc(this._t(x))}</option>`;
     });
     return o + `<option value="__manual">✏️ Upiši MAC ručno…</option>`;
   }
@@ -1107,10 +1109,10 @@ class RipacOsobeCard extends HTMLElement {
       const mac = macs[p.name] || "";
       const onWifi = mac && live[mac];
       const home = (ps && ps.state === "home") || onWifi;
-      const src = onWifi ? `na WiFi-ju · ${onWifi.attributes.ip || ""}` : ps && ps.state === "home" ? "po GPS-u" : "";
+      const src = onWifi ? "na WiFi-ju" : ps && ps.state === "home" ? "po GPS-u" : "";
       return `<div class="p ${home ? "home" : ""}" data-id="${p.id}" data-name="${vEsc(p.name)}">
         <div class="av">${vEsc(p.name.slice(0, 1).toUpperCase())}</div>
-        <div class="nm"><b>${vEsc(p.name)}</b><span>${home ? `🟢 u vikendici · ${vEsc(src)}` : "⚪ nije tu"}</span>${mac ? `<span class="mac">MAC ${vEsc(mac)}</span>` : ""}</div>
+        <div class="nm"><b>${vEsc(p.name)}</b><span>${home ? `🟢 u vikendici · ${vEsc(src)}` : "⚪ nije tu"}</span></div>
         <div class="ipw">${this._manual && this._manual === p.id
           ? `<input class="ip" value="${vEsc(mac)}" placeholder="AA:BB:CC:DD:EE:FF" autocapitalize="characters">`
           : `<select class="ips">${this._opts(mac, phones, macs)}</select>`}</div>
@@ -1137,9 +1139,9 @@ class RipacOsobeCard extends HTMLElement {
     </style><ha-card>
       <div class="hd"><ha-icon icon="mdi:account-group"></ha-icon>Osobe<span class="n">u vikendici: ${vEsc(st["sensor.poznati_na_mrezi"] ? st["sensor.poznati_na_mrezi"].state : "–")}</span></div>
       ${rows}
-      ${free.length ? `<div class="free">Nepovezani mobiteli na WiFi-ju: ${free.map(([mac, x]) => `<b>${vEsc(x.attributes.ip || mac)}</b> (online ${vEsc(this._t(x) || "?")})`).join(", ")}</div>` : ""}
+      ${free.length ? `<div class="free">Nepovezani mobiteli na WiFi-ju: ${free.map(([mac, x]) => `<b>${vEsc(x.attributes.ip || "?")}</b> · ${mac} (online ${vEsc(this._t(x) || "?")})`).join(", ")}</div>` : ""}
       <div class="add"><input placeholder="Nova osoba (npr. Tata)"><button>Dodaj</button></div>
-      <div class="hint">Izaberi mobitel svake osobe po IP-u koji trenutno ima. Veza se pamti po MAC adresi mobitela, pa ostaje i kad ruter dodijeli novi IP. Na iPhoneu za WiFi vikendice drži "Privatna WiFi adresa" na <b>Fiksna</b> (ili isključenu), da MAC ostane isti.</div>
+      <div class="hint">Za povezivanje izaberi mobitel po IP-u i MAC-u. Pamti se samo MAC, a IP se prikazuje kad je mobitel na WiFi-ju. Na iPhoneu za WiFi vikendice drži "Privatna WiFi adresa" na <b>Fiksna</b> (ili isključenu), da MAC ostane isti.</div>
     </ha-card>`;
     const R = this.shadowRoot;
     R.querySelectorAll(".p").forEach((row) => {
