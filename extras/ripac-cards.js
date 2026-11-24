@@ -1341,7 +1341,7 @@ if (!customElements.get("ripac-zivotinje-card")) customElements.define("ripac-zi
 /* ---------- Struja iz mreže: histogram (sat/dan/mjesec) + trošak po tarifama ---------- */
 class RipacStrujaCard extends HTMLElement {
   setConfig(c) {
-    this._c = Object.assign({ entity: "sensor.ripac_q0048088723771_energija_iz_mreze", vt: "input_number.cijena_struje_vt", mt: "input_number.cijena_struje_mt", fiksno: 13.1 }, c || {});
+    this._c = Object.assign({ entity: "sensor.ripac_q0048088723771_energija_iz_mreze", power: "sensor.ripac_q0048088723771_ripac_grid_power", vt: "input_number.cijena_struje_vt", mt: "input_number.cijena_struje_mt", fiksno: 13.1 }, c || {});
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     this._tab = this._tab || "dan";
   }
@@ -1363,6 +1363,14 @@ class RipacStrujaCard extends HTMLElement {
       const r = await this._hass.callWS({ type: "recorder/statistics_during_period", start_time: start.toISOString(), period: "hour",
         statistic_ids: [this._c.entity], types: ["change"], units: { energy: "kWh" } });
       this._rows = (r[this._c.entity] || []).map((x) => ({ t: new Date(x.start), kwh: Math.max(0, x.change || 0) }));
+      // starije sate (prije nego je postojao brojač energije) procijeni iz prosječne snage mreže
+      if (this._c.power) {
+        const first = this._rows.length ? this._rows[0].t.getTime() : Date.now();
+        const pw = await this._hass.callWS({ type: "recorder/statistics_during_period", start_time: start.toISOString(), end_time: new Date(first).toISOString(),
+          period: "hour", statistic_ids: [this._c.power], types: ["mean"] });
+        const old = (pw[this._c.power] || []).filter((x) => x.start < first).map((x) => ({ t: new Date(x.start), kwh: Math.max(0, x.mean || 0) / 1000, est: true }));
+        this._rows = old.concat(this._rows);
+      }
     } catch (e) { this._rows = []; this._err = e.message; }
     this._render();
   }
