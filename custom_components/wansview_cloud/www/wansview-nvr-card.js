@@ -46,18 +46,18 @@ class WansviewNvrCard extends HTMLElement {
     if (!this._hass) return;
     try {
       const msg = { type: "wansview_cloud/recordings", limit: this._config.recent === false ? 1 : this._config.limit };
-      if (this._filter) msg.camera = this._filter;
-      let wv = { items: [], cameras: [] };
-      if (!this._filter || !(this._reoCams || []).includes(this._filter)) wv = await this._hass.callWS(msg);
+      const ck = (c) => String(c || "").replace(/ Vikendica$/, "");
+      const wv = await this._hass.callWS(msg);
       const wvItems = this._group(wv.items || []);
       const merge = (reo) => {
-        let items = wvItems.concat(this._filter ? reo.filter((r) => r.camera === this._filter) : reo);
+        let items = wvItems.concat(reo);
+        if (this._filter) items = items.filter((r) => ck(r.camera) === this._filter);
         items.sort((a, b) => (b.day + b.time).localeCompare(a.day + a.time));
         this._items = items.slice(0, this._config.limit);
       };
       // show Wansview clips right away, Reolink SD list (slow, asks the camera) is added when it arrives
       merge(this._reoCache || []);
-      if (!this._filter) this._cams = [...(this._reoCams || []), ...(wv.cameras || [])];
+      this._cams = [...new Set([...(this._reoCams || []), ...(wv.cameras || [])].map(ck))];
       this._loaded = true;
       this._render();
       let reoNames = this._reoCams || [];
@@ -71,7 +71,7 @@ class WansviewNvrCard extends HTMLElement {
           merge(reo);
         }
       }
-      if (!this._filter) this._cams = [...reoNames, ...(wv.cameras || [])];
+      this._cams = [...new Set([...reoNames, ...(wv.cameras || [])].map(ck))];
       if (this._config.cameras) {
         const latest = {};
         await Promise.all(
@@ -186,7 +186,7 @@ class WansviewNvrCard extends HTMLElement {
     if (!cams.length) cams.push(...new Set(this._items.map((it) => ck(it.camera))));
     const ncount = (c) => all.filter((it) => it._ck === c && kinds.has(this._kind(it))).length;
     cams.sort((a, b) => ncount(b) - ncount(a) || a.localeCompare(b));
-    const disp = (c) => ({ Sadrvan: "Šadrvan", "Kuća Parking": "Parking", Iza: "Iza kuće", ...(this._config.names || {}) })[c] || c;
+    const disp = (c) => this._disp(c);
     const z = this._zoom;
     const pct = (sec) => (sec / 86400) * 100;
     const isToday = day === todayKey;
@@ -310,6 +310,10 @@ class WansviewNvrCard extends HTMLElement {
 
   // same camera from Reolink SD card and from the NVR folder ("Ulaz Vikendica" / "Ulaz") → one lane;
   // an NVR snapshot that falls inside a Reolink event gives that event its picture instead of a second pill
+  _disp(c) {
+    return ({ Sadrvan: "Šadrvan", "Kuća Parking": "Parking", Iza: "Iza kuće", ...((this._config || {}).names || {}) })[c] || c;
+  }
+
   _dedup(items) {
     const ck = (c) => String(c || "").replace(/ Vikendica$/, "");
     const raw = (items || []).map((it) => ({ ...it, _ck: ck(it.camera) }));
@@ -350,7 +354,7 @@ class WansviewNvrCard extends HTMLElement {
     const byDay = {};
     for (const it of this._items) (byDay[it.day] = byDay[it.day] || []).push(it);
     const chips = ["", ...this._cams]
-      .map((cam) => `<button class="chip ${cam === this._filter ? "on" : ""}" data-cam="${this._esc(cam)}">${cam ? this._esc(cam) : "Sve kamere"}</button>`)
+      .map((cam) => `<button class="chip ${cam === this._filter ? "on" : ""}" data-cam="${this._esc(cam)}">${cam ? this._esc(this._disp(cam)) : "Sve kamere"}</button>`)
       .join("");
     const days = Object.keys(byDay)
       .sort()
