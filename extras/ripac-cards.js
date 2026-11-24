@@ -1499,6 +1499,52 @@ class RipacStrujaKalibCard extends RipacStrujaCard {
     if (!this._t || Date.now() - this._t > 300000) { this._t = Date.now(); this._load(); }
     else if (!this.shadowRoot.activeElement) this._render();
   }
+  async _load() {
+    await super._load();
+    try { await this._solarLoad(); } catch (e) { this._solErr = e.message; }
+    this._render();
+  }
+  // historija za učenje: prognoza po satu (sensor.energy_current_hour), stvarna proizvodnja po satu,
+  // max SOC po satu (puna baterija = proizvodnja ograničena) i oblačnost (weather.home)
+  async _solarLoad() {
+    const H = this._hass, start = new Date(Date.now() - 10 * 86400000); start.setHours(0, 0, 0, 0);
+    const FC = "sensor.energy_current_hour", ACT = "sensor.ripac_q0048088723771_ripac_energy_total", SOC = "sensor.baterija_soc_stabilno", W = "weather.home";
+    const [hi, st, wh] = await Promise.all([
+      H.callWS({ type: "history/history_during_period", start_time: start.toISOString(), entity_ids: [FC], minimal_response: true, no_attributes: true }),
+      H.callWS({ type: "recorder/statistics_during_period", start_time: start.toISOString(), period: "hour", statistic_ids: [ACT, SOC], types: ["change", "max"] }),
+      H.callWS({ type: "history/history_during_period", start_time: start.toISOString(), entity_ids: [W], significant_changes_only: false }).catch(() => ({})),
+    ]);
+    const hk = (d) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}-${d.getHours()}`;
+    const fc = new Map(); // zadnja prognoza unutar tog sata
+    (hi[FC] || []).forEach((x) => { const v = parseFloat(x.s); if (!isNaN(v)) fc.set(hk(new Date((x.lu || x.lc) * 1000)), v); });
+    // forward-fill: ako se senzor nije mijenjao, vrijedi zadnja vrijednost
+    const act = new Map(), soc = new Map(), cc = new Map();
+    (st[ACT] || []).forEach((r) => act.set(hk(new Date(r.start)), Math.max(0, r.change || 0)));
+    (st[SOC] || []).forEach((r) => soc.set(hk(new Date(r.start)), r.max));
+    let lastCc = null;
+    (wh[W] || []).forEach((x) => { const c = x.a && x.a.cloud_coverage; if (c != null) cc.set(hk(new Date((x.lu || x.lc) * 1000)), c); });
+    const days = [], hours = Array.from({ length: 24 }, () => ({ fc: 0, act: 0, n: 0 }));
+    let lastFc = null;
+    for (let d = new Date(start); d < new Date(); d.setDate(d.getDate() + 1)) {
+      const row = { d: new Date(d), fc: 0, act: 0, ufc: 0, uact: 0, uh: 0, full: 0, cc: [], hasFc: false };
+      for (let h = 0; h < 24; h++) {
+        const t = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h), k = hk(t);
+        if (t > new Date()) break;
+        if (fc.has(k)) { lastFc = fc.get(k); row.hasFc = true; }
+        if (cc.has(k)) lastCc = cc.get(k);
+        const f = fc.has(k) ? fc.get(k) : (row.hasFc ? 0 : null), a = act.get(k) || 0, sc = soc.get(k);
+        if (f == null) continue;
+        row.fc += f; row.act += a;
+        if (f >= 0.02) {
+          if (lastCc != null) row.cc.push(lastCc);
+          if (sc != null && sc >= 95) row.full++;
+          else { row.ufc += f; row.uact += a; row.uh++; hours[h].fc += f; hours[h].act += a; hours[h].n++; }
+        }
+      }
+      if (row.hasFc) { row.cloud = row.cc.length ? row.cc.reduce((x, y) => x + y, 0) / row.cc.length : null; days.push(row); }
+    }
+    this._sol = { days, hours };
+  }
   _measure() {
     const od = new Date(this._f.od + "T00:00:00"), dd = new Date(this._f.do + "T00:00:00"); dd.setDate(dd.getDate() + 1);
     let vt = 0, mt = 0, est = 0, tot = 0, hrs = 0;
@@ -1553,6 +1599,17 @@ class RipacStrujaKalibCard extends RipacStrujaCard {
       .rr span { font-size:12px; color:var(--secondary-text-color); } .rr b { font-size:15px; text-align:right; } .rr em { grid-column:1/-1; font-style:normal; font-size:11.5px; color:var(--secondary-text-color); }
       .rr.big b { font-size:18px; color:var(--primary-color); }
       .warn { font-size:12px; color:#ffb74d; background:rgba(255,183,77,.1); border-radius:10px; padding:8px 10px; }
+      .sdw { display:flex; gap:4px; align-items:flex-end; }
+      .sd { flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; gap:2px; }
+      .sb { position:relative; width:100%; height:90px; display:flex; align-items:flex-end; justify-content:center; gap:2px; }
+      .sb i { display:block; width:42%; border-radius:3px 3px 0 0; min-height:1px; } .sb .f, .lg2 .f { background:rgba(255,213,79,.35); } .sb .a, .lg2 .a { background:#ffb300; } .sb .a.cut, .lg2 .cut { background:repeating-linear-gradient(45deg,#ffb300 0 3px,#8d6e00 3px 6px); }
+      .sl { font-size:9.5px; text-align:center; line-height:1.15; color:var(--secondary-text-color); } .sx { font-size:10px; font-weight:700; } .sc { font-size:9px; color:var(--secondary-text-color); white-space:nowrap; }
+      .lg2 { display:flex; gap:12px; flex-wrap:wrap; font-size:11px; color:var(--secondary-text-color); margin-top:6px; } .lg2 em { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+      .hp { display:flex; flex-direction:column; gap:4px; }
+      .hr { display:grid; grid-template-columns:30px 1fr 52px; align-items:center; gap:8px; font-size:11.5px; } .hr span { color:var(--secondary-text-color); } .hr b { text-align:right; }
+      .ht { position:relative; height:10px; border-radius:5px; background:rgba(127,127,127,.12); overflow:hidden; }
+      .ht i { position:absolute; left:0; top:0; bottom:0; background:#ffb300; border-radius:5px; } .ht i.lo { background:#ef6c00; } .ht i.hi { background:#9ccc65; }
+      .ht em { position:absolute; left:50%; top:-2px; bottom:-2px; width:2px; background:var(--primary-text-color); opacity:.6; }
       table { width:100%; border-collapse:collapse; font-size:12.5px; } td, th { padding:6px 4px; text-align:right; } th { font-size:10.5px; color:var(--secondary-text-color); font-weight:700; text-transform:uppercase; }
       td:first-child, th:first-child { text-align:left; } tr + tr td { border-top:1px solid rgba(127,127,127,.12); } td.e { color:var(--secondary-text-color); }
     </style><ha-card>
@@ -1622,8 +1679,32 @@ class RipacStrujaKalibCard extends RipacStrujaCard {
           <div class="rr"><span>Sutra</span><b>${f1(tm * k)} kWh</b><em>Forecast.Solar kaže ${f1(tm)} kWh</em></div>
         </div>
         <div class="note">Svaki sat poredim prognozu za taj sat sa stvarnom proizvodnjom panela. Brojim samo sate kad baterija nije puna, jer puna baterija namjerno smanjuje proizvodnju. Starije dane polako zaboravljam (~1 sedmica), pa faktor prati i godišnje doba. Ispravljenu prognozu koristi automatizacija za noćno punjenje baterije.${ready && Math.abs(k - 1) > 0.15 ? ` Da Energy dashboard prikazuje istu prognozu, u Forecast.Solar postavi snagu panela na <b>~${Math.round(4500 * k / 50) * 50} W</b> (sada 4500 W).` : ""}</div>
+        ${this._solHist()}
         ${n ? `<div class="row"><button class="ghost sreset">Kreni učiti ispočetka</button></div>` : ""}
       </div>`;
+  }
+  _solHist() {
+    const S = this._sol;
+    if (!S) return `<div class="note">Učitavam historiju…</div>`;
+    if (!S.days.length) return `<div class="note">Još nema historije prognoze.</div>`;
+    const f1 = (v) => v.toFixed(1).replace(".", ","), WD = ["ned", "pon", "uto", "sri", "čet", "pet", "sub"];
+    const mx = Math.max(0.1, ...S.days.map((d) => Math.max(d.fc, d.act)));
+    const tot = S.days.reduce((a, d) => ({ f: a.f + d.ufc, a: a.a + d.uact, h: a.h + d.uh, full: a.full + d.full }), { f: 0, a: 0, h: 0, full: 0 });
+    const bars = S.days.map((d) => `<div class="sd" title="${d.d.getDate()}.${d.d.getMonth() + 1}. prognoza ${f1(d.fc)} · stvarno ${f1(d.act)} kWh">
+        <div class="sb"><i class="f" style="height:${(d.fc / mx) * 100}%"></i><i class="a ${d.full > d.uh ? "cut" : ""}" style="height:${(d.act / mx) * 100}%"></i></div>
+        <div class="sl">${WD[d.d.getDay()]}<br>${d.d.getDate()}.</div>
+        <div class="sx">${d.uh ? `× ${(d.uact / Math.max(d.ufc, 0.001)).toFixed(1).replace(".", ",")}` : d.full ? "puna" : "–"}</div>
+        <div class="sc">${d.cloud != null ? `☁ ${Math.round(d.cloud)}%` : ""}</div></div>`).join("");
+    const hrs = S.hours.map((x, i) => ({ ...x, i })).filter((x) => x.fc > 0.05);
+    const prof = hrs.length ? `<div class="st" style="margin-top:12px">Po satu u danu (samo sati kad baterija nije puna)</div>
+      <div class="hp">${hrs.map((x) => { const r = x.act / x.fc, w = Math.min(100, r * 50);
+        return `<div class="hr"><span>${String(x.i).padStart(2, "0")}h</span><div class="ht"><i style="width:${w}%" class="${r < 0.6 ? "lo" : r > 1.2 ? "hi" : ""}"></i><em></em></div><b>× ${r.toFixed(2).replace(".", ",")}</b></div>`; }).join("")}</div>
+      <div class="note">Crta u sredini = prognoza tačna (× 1). Ako su jutarnji ili popodnevni sati stalno niski, to je sjena (brdo, drveće), pa to treba ispraviti u Forecast.Solar (prigušenje ujutro i navečer), a ne jednim faktorom.</div>` : "";
+    return `<div class="st" style="margin-top:12px">Zadnjih ${S.days.length} dana</div>
+      <div class="sdw">${bars}</div>
+      <div class="lg2"><span><em class="f"></em>prognoza</span><span><em class="a"></em>stvarno</span><span><em class="a cut"></em>baterija bila puna</span></div>
+      <div class="note">Iz historije: ${tot.h} korisnih sati (${tot.full} sati preskočeno jer je baterija bila puna) → stvarno ${f1(tot.a)} / prognoza ${f1(tot.f)} kWh${tot.f > 0.3 ? ` = <b>× ${(tot.a / tot.f).toFixed(2).replace(".", ",")}</b>` : ""}.</div>
+      ${prof}`;
   }
   _monthsTable(pr, FIX, fx, km, kw) {
     const p2 = (n) => String(n).padStart(2, "0"), MJ = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
