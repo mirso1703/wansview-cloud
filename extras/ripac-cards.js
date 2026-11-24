@@ -738,7 +738,7 @@ class RipacSolarCard extends RipacBase {
       </div>${this._config.struja ? `<div class="emb"></div>` : ""}</ha-card>`;
     const root = this.shadowRoot;
     if (this._config.struja) {
-      if (!this._str) { this._str = document.createElement("ripac-struja-card"); this._str.setConfig({ embedded: true }); }
+      if (!this._str) { this._str = document.createElement("ripac-struja-card"); this._str.setConfig({ embedded: true, link: this._config.struja_link || "/ripac-mobitel/struja" }); }
       this._str.hass = this._hass;
       root.querySelector(".emb").appendChild(this._str);
     }
@@ -1347,7 +1347,8 @@ if (!customElements.get("ripac-zivotinje-card")) customElements.define("ripac-zi
 /* ---------- Struja iz mreže: histogram (sat/dan/mjesec) + trošak po tarifama ---------- */
 class RipacStrujaCard extends HTMLElement {
   setConfig(c) {
-    this._c = Object.assign({ entity: "sensor.ripac_q0048088723771_energija_iz_mreze", power: "sensor.ripac_q0048088723771_ripac_grid_power", vt: "input_number.cijena_struje_vt", mt: "input_number.cijena_struje_mt", fiksno: 13.1 }, c || {});
+    this._c = Object.assign({ entity: "sensor.ripac_q0048088723771_energija_iz_mreze", power: "sensor.ripac_q0048088723771_ripac_grid_power", vt: "input_number.cijena_struje_vt", mt: "input_number.cijena_struje_mt", fiksno: 13.1,
+      fiksno_entity: "input_number.struja_fiksno", korekcija: "input_number.struja_korekcija" }, c || {});
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     this._tab = this._tab || "dan";
   }
@@ -1380,15 +1381,17 @@ class RipacStrujaCard extends HTMLElement {
     } catch (e) { this._rows = []; this._err = e.message; }
     this._render();
   }
+  _fx() { const f = parseFloat((this._hass.states[this._c.korekcija] || {}).state); return f > 0 ? f : 1; }
+  _fix() { const f = parseFloat((this._hass.states[this._c.fiksno_entity] || {}).state); return isNaN(f) ? this._c.fiksno : f; }
   _price() {
     const v = parseFloat((this._hass.states[this._c.vt] || {}).state) || 0.236, m = parseFloat((this._hass.states[this._c.mt] || {}).state) || 0.1197;
     return { v, m };
   }
   _agg(keyFn, filter) {
-    const pr = this._price(), out = new Map();
+    const pr = this._price(), fx = this._fx(), out = new Map();
     (this._rows || []).filter(filter).forEach((x) => {
-      const k = keyFn(x.t); const o = out.get(k) || { vt: 0, mt: 0, km: 0 };
-      if (this._isMT(x.t)) { o.mt += x.kwh; o.km += x.kwh * pr.m; } else { o.vt += x.kwh; o.km += x.kwh * pr.v; }
+      const k = keyFn(x.t); const o = out.get(k) || { vt: 0, mt: 0, km: 0 }; const e = x.kwh * fx;
+      if (this._isMT(x.t)) { o.mt += e; o.km += e * pr.m; } else { o.vt += e; o.km += e * pr.v; }
       out.set(k, o);
     });
     return out;
@@ -1424,7 +1427,8 @@ class RipacStrujaCard extends HTMLElement {
     const pm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const pmm = this._agg(() => "x", (x) => monKey(x.t) === monKey(pm)).get("x") || { vt: 0, mt: 0, km: 0 };
     const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(), elapsed = (now.getDate() - 1) + now.getHours() / 24 + now.getMinutes() / 1440;
-    const proj = elapsed > 0.5 ? (mm.km / elapsed) * dim + this._c.fiksno : null;
+    const FIX = this._fix();
+    const proj = elapsed > 0.5 ? (mm.km / elapsed) * dim + FIX : null;
     const km = (v) => `${v.toFixed(2).replace(".", ",")} KM`, kw = (v) => `${v < 10 ? v.toFixed(2) : v.toFixed(1)} kWh`;
     const barsHtml = bars.map((b, i) => {
       const t = b.o.vt + b.o.mt, hv = (b.o.vt / max) * 100, hm = (b.o.mt / max) * 100;
@@ -1439,6 +1443,8 @@ class RipacStrujaCard extends HTMLElement {
       ha-card { padding:14px 14px 12px; }
       .hd { display:flex; align-items:center; gap:8px; } .hd .t { font-size:16px; font-weight:600; }
       .hd ha-icon { --mdc-icon-size:22px; color:#b39ddb; }
+      .lk { font-size:12px; font-weight:600; color:var(--primary-color); text-decoration:none; white-space:nowrap; }
+      .ch.big { height:170px; }
       .seg { margin-left:auto; display:flex; background:rgba(127,127,127,.15); border-radius:10px; padding:2px; }
       .seg button { border:0; background:none; color:var(--secondary-text-color); font-size:12px; font-weight:600; padding:5px 9px; border-radius:8px; cursor:pointer; }
       .seg button.on { background:var(--card-background-color,#222); color:var(--primary-text-color); box-shadow:0 1px 3px rgba(0,0,0,.25); }
@@ -1458,22 +1464,183 @@ class RipacStrujaCard extends HTMLElement {
       :host([emb]) ha-card, .embw { background:none; border:0; box-shadow:none; padding:0; }
       .embw { display:block; margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,.08); }
     </style>${this._c.embedded ? `<div class="embw">` : `<ha-card>`}
-      <div class="hd"><ha-icon icon="mdi:transmission-tower"></ha-icon><div class="t">Struja iz mreže</div>
+      <div class="hd"><ha-icon icon="mdi:transmission-tower"></ha-icon><div class="t">Struja iz mreže</div>${this._c.link ? `<a class="lk" href="${this._c.link}">Detalji ›</a>` : ""}
         <div class="seg">${[["dan", "Dan"], ["mjesec", "30 dana"], ["godina", "Godina"]].map(([k, l]) => `<button data-t="${k}" class="${this._tab === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
       <div class="kp">
         <div class="k"><div class="kl">Danas</div><div class="kv">${km(tm.km)}</div><div class="ks">${kw(tm.vt + tm.mt)}</div></div>
-        <div class="k"><div class="kl">Ovaj mjesec</div><div class="kv">${km(mm.km + this._c.fiksno)}</div><div class="ks">${kw(mm.vt + mm.mt)} + fiksno ${km(this._c.fiksno)}</div></div>
-        <div class="k"><div class="kl">Procjena računa</div><div class="kv">${proj != null ? km(proj) : "–"}</div><div class="ks">${pmm.vt + pmm.mt > 0 ? `prošli mj. ${km(pmm.km + this._c.fiksno)}` : "sa fiksnim dijelom"}</div></div>
+        <div class="k"><div class="kl">Ovaj mjesec</div><div class="kv">${km(mm.km + FIX)}</div><div class="ks">${kw(mm.vt + mm.mt)} + fiksno ${km(FIX)}</div></div>
+        <div class="k"><div class="kl">Procjena računa</div><div class="kv">${proj != null ? km(proj) : "–"}</div><div class="ks">${pmm.vt + pmm.mt > 0 ? `prošli mj. ${km(pmm.km + FIX)}` : "sa fiksnim dijelom"}</div></div>
       </div>
-      <div class="ch">${barsHtml}</div>
+      <div class="ch ${this._c.big ? "big" : ""}">${barsHtml}</div>
       <div class="lg"><span><em style="background:#ffb74d"></em>skupa (VT ${this._price().v.toFixed(3)})</span><span><em style="background:#64b5f6"></em>jeftina (MT ${this._price().m.toFixed(3)})</span></div>
       <div class="info">${info}</div>
     ${this._c.embedded ? `</div>` : `</ha-card>`}`;
     const R = this.shadowRoot;
     R.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => { this._tab = b.dataset.t; this._sel = null; this._render(); }));
     R.querySelectorAll(".bc").forEach((b) => b.addEventListener("click", () => { const i = +b.dataset.i; this._sel = this._sel === i ? null : i; this._render(); }));
+    const lk = R.querySelector(".lk");
+    if (lk) lk.addEventListener("click", (e) => { e.preventDefault(); history.pushState(null, "", this._c.link); window.dispatchEvent(new CustomEvent("location-changed")); });
   }
 }
+
+// ---------- Struja: cijene + kalibracija po računu EP BiH ----------
+class RipacStrujaKalibCard extends RipacStrujaCard {
+  setConfig(c) {
+    super.setConfig(Object.assign({ store: "input_text.struja_kalibracija" }, c || {}));
+    const n = new Date(), p = new Date(n.getFullYear(), n.getMonth() - 1, 1), e = new Date(n.getFullYear(), n.getMonth(), 0);
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    this._f = this._f || { od: iso(p), do: iso(e), vt: "", mt: "", iznos: "" };
+  }
+  getCardSize() { return 8; }
+  set hass(h) {
+    const first = !this._hass;
+    this._hass = h;
+    if (first) { try { const j = JSON.parse(h.states[this._c.store]?.state || "{}"); if (j.od) this._f = { ...this._f, ...j }; } catch (e) {} }
+    if (!this._t || Date.now() - this._t > 300000) { this._t = Date.now(); this._load(); }
+    else if (!this.shadowRoot.activeElement) this._render();
+  }
+  _measure() {
+    const od = new Date(this._f.od + "T00:00:00"), dd = new Date(this._f.do + "T00:00:00"); dd.setDate(dd.getDate() + 1);
+    let vt = 0, mt = 0, est = 0, tot = 0, hrs = 0;
+    (this._rows || []).forEach((x) => { if (x.t < od || x.t >= dd) return; hrs++; tot += x.kwh; if (x.est) est += x.kwh; if (this._isMT(x.t)) mt += x.kwh; else vt += x.kwh; });
+    const want = Math.round((dd - od) / 3600000);
+    return { vt, mt, tot, est, cover: want ? Math.min(1, hrs / want) : 0, months: Math.max(1, Math.round((dd - od) / (86400000 * 30.4))) };
+  }
+  _set(e, v) { return this._hass.callService("input_number", "set_value", { entity_id: e, value: v }); }
+  _render() {
+    if (!this._hass) return;
+    const pr = this._price(), FIX = this._fix(), fx = this._fx(), m = this._measure();
+    const num = (v) => parseFloat(String(v).replace(",", "."));
+    const bVt = num(this._f.vt), bMt = num(this._f.mt), bIz = num(this._f.iznos);
+    const bill = (isNaN(bVt) ? 0 : bVt) + (isNaN(bMt) ? 0 : bMt);
+    const km = (v) => `${v.toFixed(2).replace(".", ",")} KM`, kw = (v) => `${v.toFixed(1).replace(".", ",")} kWh`;
+    const f2 = bill > 0 && m.tot > 0.05 ? bill / m.tot : null;
+    const calc = bill > 0 ? (isNaN(bVt) ? 0 : bVt) * pr.v + (isNaN(bMt) ? 0 : bMt) * pr.m + FIX * m.months : null;
+    let last = null; try { last = JSON.parse(this._hass.states[this._c.store]?.state || "null"); } catch (e) {}
+    const tarifa = this._isMT(new Date()) ? "jeftina (MT)" : "skupa (VT)";
+    // when does tariff change next
+    let nx = new Date(); nx.setMinutes(0, 0, 0); const cur = this._isMT(new Date());
+    for (let i = 0; i < 48; i++) { nx = new Date(nx.getTime() + 3600000); if (this._isMT(nx) !== cur) break; }
+    const p2 = (n) => String(n).padStart(2, "0");
+    const res = f2 == null ? "" : `<div class="res">
+        <div class="rr"><span>Izmjereno (inverter)</span><b>${kw(m.tot)}</b><em>VT ${kw(m.vt)} · MT ${kw(m.mt)}</em></div>
+        <div class="rr"><span>Po računu</span><b>${kw(bill)}</b><em>VT ${kw(bVt || 0)} · MT ${kw(bMt || 0)}</em></div>
+        <div class="rr big"><span>Faktor korekcije</span><b>× ${f2.toFixed(3).replace(".", ",")}</b><em>${f2 > 1 ? `inverter mjeri ${((f2 - 1) * 100).toFixed(1).replace(".", ",")} % manje od brojila` : `inverter mjeri ${((1 - f2) * 100).toFixed(1).replace(".", ",")} % više od brojila`}</em></div>
+        ${calc != null && !isNaN(bIz) ? `<div class="rr"><span>Račun po ovim cijenama</span><b>${km(calc)}</b><em>stvarni ${km(bIz)} · razlika ${km(bIz - calc)}${Math.abs(bIz - calc) > 0.5 ? " – provjeri cijene ili fiksni dio" : " ✓"}</em></div>` : ""}
+        ${m.cover < 0.9 ? `<div class="warn">Za ovaj period imam podatke za samo ${Math.round(m.cover * 100)} % sati – faktor nije pouzdan.</div>` : ""}
+        ${m.est > m.tot * 0.2 ? `<div class="warn">${Math.round((m.est / Math.max(m.tot, 0.001)) * 100)} % izmjerenog je procjena iz snage mreže (prije brojača energije).</div>` : ""}
+        <button class="ap">Primijeni × ${f2.toFixed(3).replace(".", ",")}</button></div>`;
+    this.shadowRoot.innerHTML = `<style>
+      ha-card { padding:14px; }
+      h3 { margin:0 0 10px; font-size:16px; font-weight:600; display:flex; align-items:center; gap:8px; } h3 ha-icon { --mdc-icon-size:22px; color:#b39ddb; }
+      .sec { margin-top:14px; padding-top:12px; border-top:1px solid rgba(127,127,127,.15); }
+      .sec:first-of-type { margin-top:0; padding-top:0; border:0; }
+      .st { font-size:11px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--secondary-text-color); margin-bottom:8px; }
+      .g3 { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; } .g2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+      label { display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:var(--secondary-text-color); font-weight:600; }
+      input { font:inherit; font-size:15px; font-weight:700; color:var(--primary-text-color); background:rgba(127,127,127,.1); border:1px solid rgba(127,127,127,.2);
+              border-radius:10px; padding:8px 10px; width:100%; box-sizing:border-box; min-width:0; color-scheme:dark; }
+      input:focus { outline:none; border-color:var(--primary-color); }
+      .note { font-size:12px; color:var(--secondary-text-color); line-height:1.45; margin-top:8px; }
+      .note b { color:var(--primary-text-color); }
+      .pill { display:inline-block; padding:2px 8px; border-radius:8px; font-weight:700; font-size:12px; }
+      .pill.v { background:rgba(255,183,77,.18); color:#ffb74d; } .pill.m { background:rgba(100,181,246,.18); color:#64b5f6; }
+      button { font:inherit; font-weight:700; font-size:13px; border:0; border-radius:10px; padding:9px 14px; cursor:pointer; background:var(--primary-color); color:#fff; }
+      button.ghost { background:rgba(127,127,127,.15); color:var(--primary-text-color); }
+      .row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+      .res { margin-top:12px; display:flex; flex-direction:column; gap:6px; }
+      .rr { display:grid; grid-template-columns:1fr auto; gap:0 8px; background:rgba(127,127,127,.08); border-radius:10px; padding:8px 10px; }
+      .rr span { font-size:12px; color:var(--secondary-text-color); } .rr b { font-size:15px; text-align:right; } .rr em { grid-column:1/-1; font-style:normal; font-size:11.5px; color:var(--secondary-text-color); }
+      .rr.big b { font-size:18px; color:var(--primary-color); }
+      .warn { font-size:12px; color:#ffb74d; background:rgba(255,183,77,.1); border-radius:10px; padding:8px 10px; }
+      table { width:100%; border-collapse:collapse; font-size:12.5px; } td, th { padding:6px 4px; text-align:right; } th { font-size:10.5px; color:var(--secondary-text-color); font-weight:700; text-transform:uppercase; }
+      td:first-child, th:first-child { text-align:left; } tr + tr td { border-top:1px solid rgba(127,127,127,.12); } td.e { color:var(--secondary-text-color); }
+    </style><ha-card>
+      <h3><ha-icon icon="mdi:cash-sync"></ha-icon>Cijene i kalibracija</h3>
+      <div class="sec">
+        <div class="st">Cijene EP BiH (KM bez fiksnog)</div>
+        <div class="g3">
+          <label>Skupa VT /kWh<input data-e="${this._c.vt}" inputmode="decimal" value="${pr.v}"></label>
+          <label>Jeftina MT /kWh<input data-e="${this._c.mt}" inputmode="decimal" value="${pr.m}"></label>
+          <label>Fiksno /mjesec<input data-e="${this._c.fiksno_entity}" inputmode="decimal" value="${FIX}"></label>
+        </div>
+        <div class="note">Sada je <span class="pill ${cur ? "m" : "v"}">${tarifa}</span> do <b>${p2(nx.getHours())}:00</b>${nx.getDate() !== new Date().getDate() ? " sutra" : ""}. Jeftina: zimi 22–07 i 13–16 h, ljeti 23–08 i 14–17 h, nedjeljom cijeli dan.</div>
+      </div>
+      <div class="sec">
+        <div class="st">Kalibracija po računu</div>
+        <div class="g2">
+          <label>Od<input type="date" data-f="od" value="${this._f.od}"></label>
+          <label>Do<input type="date" data-f="do" value="${this._f.do}"></label>
+          <label>VT kWh s računa<input data-f="vt" inputmode="decimal" placeholder="npr. 12" value="${this._f.vt}"></label>
+          <label>MT kWh s računa<input data-f="mt" inputmode="decimal" placeholder="npr. 85" value="${this._f.mt}"></label>
+          <label>Iznos računa KM<input data-f="iznos" inputmode="decimal" placeholder="opcionalno" value="${this._f.iznos}"></label>
+          <label>Trenutni faktor<input disabled value="× ${fx.toFixed(3).replace(".", ",")}"></label>
+        </div>
+        <div class="note">Upiši period i potrošnju (VT/MT) s računa ili očitanja brojila. Uporedim to s onim što je inverter izmjerio i izračunam faktor kojim se množe svi kWh i KM na kartici struje.${last && last.faktor ? ` Zadnja kalibracija: <b>${last.od} – ${last.do}</b>, × ${(+last.faktor).toFixed(3).replace(".", ",")}.` : ""}</div>
+        <div class="row">${fx !== 1 ? `<button class="ghost rs">Vrati na × 1</button>` : ""}</div>
+        ${res || (bill > 0 && m.tot <= 0.05 ? `<div class="warn" style="margin-top:10px">Za taj period nemam izmjerenih podataka – izaberi period kad je brojač energije radio.</div>` : "")}
+      </div>
+      ${this._solarSec()}
+      <div class="sec">
+        <div class="st">Po mjesecima (s korekcijom)</div>
+        ${this._monthsTable(pr, FIX, fx, km, kw)}
+      </div>
+    </ha-card>`;
+    const R = this.shadowRoot;
+    R.querySelectorAll("input[data-e]").forEach((i) => i.addEventListener("change", () => { const v = num(i.value); if (!isNaN(v)) this._set(i.dataset.e, v); }));
+    R.querySelectorAll("input[data-f]").forEach((i) => {
+      i.addEventListener("change", () => { this._f[i.dataset.f] = i.value; this._render(); });
+    });
+    const ap = R.querySelector(".ap");
+    if (ap) ap.addEventListener("click", async () => {
+      await this._set(this._c.korekcija, +f2.toFixed(3));
+      const j = { od: this._f.od, do: this._f.do, vt: this._f.vt, mt: this._f.mt, iznos: this._f.iznos, faktor: +f2.toFixed(3) };
+      await this._hass.callService("input_text", "set_value", { entity_id: this._c.store, value: JSON.stringify(j).slice(0, 255) });
+      ap.textContent = "Primijenjeno ✓";
+    });
+    const rs = R.querySelector(".rs");
+    if (rs) rs.addEventListener("click", () => this._set(this._c.korekcija, 1));
+    const sr = R.querySelector(".sreset");
+    if (sr) sr.addEventListener("click", async () => {
+      if (!confirm("Obrisati naučeno i vratiti faktor prognoze na × 1?")) return;
+      for (const e of ["input_number.solar_kal_prognoza", "input_number.solar_kal_stvarno", "input_number.solar_kal_sati"]) await this._set(e, 0);
+      await this._set("input_number.solar_korekcija_prognoze", 1);
+    });
+  }
+  _solarSec() {
+    const st = (e) => parseFloat((this._hass.states[e] || {}).state);
+    const k = st("input_number.solar_korekcija_prognoze") || 1, fs = st("input_number.solar_kal_prognoza") || 0, as = st("input_number.solar_kal_stvarno") || 0, n = st("input_number.solar_kal_sati") || 0;
+    const td = st("sensor.energy_production_today"), tm = st("sensor.energy_production_tomorrow");
+    const f1 = (v) => isNaN(v) ? "–" : v.toFixed(1).replace(".", ",");
+    const live = fs > 0 ? as / fs : null;
+    const ready = fs > 1.5;
+    return `<div class="sec">
+        <div class="st">Kalibracija solarne prognoze</div>
+        <div class="res" style="margin-top:0">
+          <div class="rr big"><span>Faktor prognoze</span><b>× ${k.toFixed(2).replace(".", ",")}</b><em>${ready ? `naučeno iz ${n} sati: stvarno ${f1(as)} kWh / prognoza ${f1(fs)} kWh` : `još učim – ${n} sati, treba ~1,5 kWh prognoze u satima kad baterija nije puna${live != null ? ` (trenutno × ${live.toFixed(2).replace(".", ",")})` : ""}`}</em></div>
+          <div class="rr"><span>Danas</span><b>${f1(td * k)} kWh</b><em>Forecast.Solar kaže ${f1(td)} kWh</em></div>
+          <div class="rr"><span>Sutra</span><b>${f1(tm * k)} kWh</b><em>Forecast.Solar kaže ${f1(tm)} kWh</em></div>
+        </div>
+        <div class="note">Svaki sat poredim prognozu za taj sat sa stvarnom proizvodnjom panela. Brojim samo sate kad baterija nije puna, jer puna baterija namjerno smanjuje proizvodnju. Starije dane polako zaboravljam (~1 sedmica), pa faktor prati i godišnje doba. Ispravljenu prognozu koristi automatizacija za noćno punjenje baterije.${ready && Math.abs(k - 1) > 0.15 ? ` Da Energy dashboard prikazuje istu prognozu, u Forecast.Solar postavi snagu panela na <b>~${Math.round(4500 * k / 50) * 50} W</b> (sada 4500 W).` : ""}</div>
+        ${n ? `<div class="row"><button class="ghost sreset">Kreni učiti ispočetka</button></div>` : ""}
+      </div>`;
+  }
+  _monthsTable(pr, FIX, fx, km, kw) {
+    const p2 = (n) => String(n).padStart(2, "0"), MJ = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+    const agg = new Map();
+    (this._rows || []).forEach((x) => {
+      const k = `${x.t.getFullYear()}-${p2(x.t.getMonth() + 1)}`; const o = agg.get(k) || { vt: 0, mt: 0, est: 0 };
+      const e = x.kwh * fx; if (this._isMT(x.t)) o.mt += e; else o.vt += e; if (x.est) o.est += e; agg.set(k, o);
+    });
+    const ks = [...agg.keys()].sort().reverse().slice(0, 12);
+    if (!ks.length) return `<div class="note">Još nema podataka.</div>`;
+    return `<table><tr><th>Mjesec</th><th>VT</th><th>MT</th><th>Energija</th><th>Ukupno</th></tr>${ks.map((k) => {
+      const o = agg.get(k), en = o.vt * pr.v + o.mt * pr.m, [y, mo] = k.split("-");
+      return `<tr><td class="${o.est > (o.vt + o.mt) * 0.5 ? "e" : ""}">${MJ[+mo - 1]} ${y}${o.est > (o.vt + o.mt) * 0.5 ? " ≈" : ""}</td><td>${kw(o.vt)}</td><td>${kw(o.mt)}</td><td>${km(en)}</td><td><b>${km(en + FIX)}</b></td></tr>`;
+    }).join("")}</table><div class="note">≈ = većinom procjena iz snage mreže (prije nego je postojao brojač energije).</div>`;
+  }
+}
+if (!customElements.get("ripac-struja-kalib-card")) customElements.define("ripac-struja-kalib-card", RipacStrujaKalibCard);
 
 if (!customElements.get("ripac-struja-card")) customElements.define("ripac-struja-card", RipacStrujaCard);
 if (!customElements.get("ripac-osobe-card")) customElements.define("ripac-osobe-card", RipacOsobeCard);
