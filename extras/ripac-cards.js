@@ -643,6 +643,7 @@ class RipacCareCard extends RipacBase {
 
 const Q = "sensor.ripac_q0048088723771_ripac_";
 class RipacSolarCard extends RipacBase {
+  set hass(h) { super.hass = h; if (this._str) this._str.hass = h; }
   _watch() {
     return [Q + "solar_power", Q + "grid_power", Q + "output_power", Q + "battery_power", Q + "load_percentage", Q + "battery_voltage", Q + "energy_today",
       "sensor.baterija_soc_stabilno", "select.ripac_q0048088723771_ripac_output_priority", "sensor.tarifa_struje", "input_boolean.pametno_upravljanje_solarom",
@@ -734,8 +735,13 @@ class RipacSolarCard extends RipacBase {
         <div class="k" data-nav="/ripac-odrzavanje/pregled"><div class="kl">Baterije</div><div class="kv">${(n("sensor.baterije_energija_bms") || soc / 100 * 6.4).toFixed(1)} <small>/ 6.4 kWh</small></div>
           <div class="ks">${["sh24100_h_01606", "sh24100_h_01488"].map((b) => this.st(`sensor.${b}_battery`)).filter((x) => x && !isNaN(x)).map((x) => Math.round(x) + "%").join(" · ") || "BMS –"} · ${esc(vnow ?? "–")} V</div>
           <div class="ks">${(() => { const c = ["sh24100_h_01606", "sh24100_h_01488"].map((b) => parseFloat(this.st(`sensor.${b}_cycles`))).filter((x) => !isNaN(x)); const t = parseFloat(this.st("sensor.baterije_najniza_temperatura")); return `${c.length ? Math.round(c.reduce((a, b) => a + b, 0) / c.length) + " ciklusa" : ""}${!isNaN(t) ? ` · ${t.toFixed(0)} °C` : ""}`; })()}</div></div>
-      </div></ha-card>`;
+      </div>${this._config.struja ? `<div class="emb"></div>` : ""}</ha-card>`;
     const root = this.shadowRoot;
+    if (this._config.struja) {
+      if (!this._str) { this._str = document.createElement("ripac-struja-card"); this._str.setConfig({ embedded: true }); }
+      this._str.hass = this._hass;
+      root.querySelector(".emb").appendChild(this._str);
+    }
     root.querySelectorAll("[data-e]").forEach((el) => el.addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: el.dataset.e }, bubbles: true, composed: true }))));
     root.querySelectorAll("[data-tg]").forEach((el) => el.addEventListener("click", () => this._hass.callService("homeassistant", "toggle", { entity_id: el.dataset.tg })));
     root.querySelectorAll("[data-nav]").forEach((el) => el.addEventListener("click", () => { history.pushState(null, "", el.dataset.nav); window.dispatchEvent(new CustomEvent("location-changed")); }));
@@ -1449,7 +1455,9 @@ class RipacStrujaCard extends HTMLElement {
       .bl { height:14px; font-size:9.5px; text-align:center; color:var(--secondary-text-color); white-space:nowrap; overflow:visible; } .bl.sun { color:#64b5f6; }
       .info { margin-top:8px; font-size:12.5px; line-height:1.4; } .info span { color:var(--secondary-text-color); }
       .lg { display:flex; gap:12px; margin-top:6px; font-size:11px; color:var(--secondary-text-color); } .lg em { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
-    </style><ha-card>
+      :host([emb]) ha-card, .embw { background:none; border:0; box-shadow:none; padding:0; }
+      .embw { display:block; margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,.08); }
+    </style>${this._c.embedded ? `<div class="embw">` : `<ha-card>`}
       <div class="hd"><ha-icon icon="mdi:transmission-tower"></ha-icon><div class="t">Struja iz mreže</div>
         <div class="seg">${[["dan", "Dan"], ["mjesec", "30 dana"], ["godina", "Godina"]].map(([k, l]) => `<button data-t="${k}" class="${this._tab === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
       <div class="kp">
@@ -1460,7 +1468,7 @@ class RipacStrujaCard extends HTMLElement {
       <div class="ch">${barsHtml}</div>
       <div class="lg"><span><em style="background:#ffb74d"></em>skupa (VT ${this._price().v.toFixed(3)})</span><span><em style="background:#64b5f6"></em>jeftina (MT ${this._price().m.toFixed(3)})</span></div>
       <div class="info">${info}</div>
-    </ha-card>`;
+    ${this._c.embedded ? `</div>` : `</ha-card>`}`;
     const R = this.shadowRoot;
     R.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => { this._tab = b.dataset.t; this._sel = null; this._render(); }));
     R.querySelectorAll(".bc").forEach((b) => b.addEventListener("click", () => { const i = +b.dataset.i; this._sel = this._sel === i ? null : i; this._render(); }));
