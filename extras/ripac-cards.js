@@ -1455,7 +1455,7 @@ class RipacStrujaCard extends HTMLElement {
       <div class="kp">
         <div class="k"><div class="kl">Danas</div><div class="kv">${km(tm.km)}</div><div class="ks">${kw(tm.vt + tm.mt)}</div></div>
         <div class="k"><div class="kl">Ovaj mjesec</div><div class="kv">${km(mm.km + this._c.fiksno)}</div><div class="ks">${kw(mm.vt + mm.mt)} + fiksno ${km(this._c.fiksno)}</div></div>
-        <div class="k"><div class="kl">Procjena računa</div><div class="kv">${proj != null ? km(proj) : "–"}</div><div class="ks">prošli mj. ${km(pmm.km + this._c.fiksno)}</div></div>
+        <div class="k"><div class="kl">Procjena računa</div><div class="kv">${proj != null ? km(proj) : "–"}</div><div class="ks">${pmm.vt + pmm.mt > 0 ? `prošli mj. ${km(pmm.km + this._c.fiksno)}` : "sa fiksnim dijelom"}</div></div>
       </div>
       <div class="ch">${barsHtml}</div>
       <div class="lg"><span><em style="background:#ffb74d"></em>skupa (VT ${this._price().v.toFixed(3)})</span><span><em style="background:#64b5f6"></em>jeftina (MT ${this._price().m.toFixed(3)})</span></div>
