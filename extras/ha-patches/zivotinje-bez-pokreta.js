@@ -22,7 +22,7 @@
     P.actions.unshift(
       { variables: { reo_cam: "{% set e = trigger.entity_id | default('') %}{{ 'ulaz' if 'ulaz' in e else ('iza' if 'iza' in e else '') }}" } },
       { if: [{ condition: "template", value_template: "{{ reo_cam != '' }}" }], then: [{ delay: { seconds: 8 } }] },
-      { variables: { samo_zivotinja: "{% if reo_cam %}{% set a = ['binary_sensor.' ~ reo_cam ~ '_vikendica_animal', 'binary_sensor.' ~ reo_cam ~ '_vikendica_pet'] %}{% set an = a | select('is_state','on') | list | count > 0 or (a | map('states') | list | count > 0 and (a | select('has_value') | map('as_entity') | map(attribute='last_changed') | select('>', now() - timedelta(seconds=40)) | list | count > 0)) %}{{ an and not is_state('binary_sensor.' ~ reo_cam ~ '_vikendica_person','on') and not is_state('binary_sensor.' ~ reo_cam ~ '_vikendica_vehicle','on') }}{% else %}false{% endif %}" } },
+      { variables: { samo_zivotinja: "{% if reo_cam %}{% set a = expand(['binary_sensor.' ~ reo_cam ~ '_vikendica_animal', 'binary_sensor.' ~ reo_cam ~ '_vikendica_pet']) %}{% set an = (a | selectattr('state','eq','on') | list | count > 0) or (a | selectattr('last_changed','gt', now() - timedelta(seconds=40)) | list | count > 0) %}{{ an and not is_state('binary_sensor.' ~ reo_cam ~ '_vikendica_person','on') and not is_state('binary_sensor.' ~ reo_cam ~ '_vikendica_vehicle','on') }}{% else %}false{% endif %}" } },
       { condition: "template", value_template: "{{ not samo_zivotinja }}" }
     );
   }
