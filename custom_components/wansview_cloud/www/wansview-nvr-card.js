@@ -2,7 +2,7 @@
 class WansviewNvrCard extends HTMLElement {
   setConfig(config) {
     this._config = { limit: 60, columns: 2, title: "Snimci", ...config };
-    this._filter = config.camera || "";
+    this._filter = String(config.camera || "").replace(/ Vikendica$/, "");
     try {
       this._view = localStorage.getItem("wvnvr-view") || config.view || "grid";
       this._zoom = +localStorage.getItem("wvnvr-zoom") || 1;
@@ -47,7 +47,8 @@ class WansviewNvrCard extends HTMLElement {
     try {
       const msg = { type: "wansview_cloud/recordings", limit: this._config.recent === false ? 1 : this._config.limit };
       const ck = (c) => String(c || "").replace(/ Vikendica$/, "");
-      const wv = await this._hass.callWS(msg);
+      if (this._filter) msg.camera = this._filter;
+      const wv = await this._hass.callWS(msg).catch(() => ({ items: [], cameras: [] }));
       const wvItems = this._group(wv.items || []);
       const merge = (reo) => {
         let items = wvItems.concat(reo);
