@@ -58,7 +58,7 @@ class WansviewNvrCard extends HTMLElement {
       };
       // show Wansview clips right away, Reolink SD list (slow, asks the camera) is added when it arrives
       merge(this._reoCache || []);
-      this._cams = [...new Set([...(this._reoCams || []), ...(wv.cameras || [])].map(ck))];
+      if (!this._filter || !this._cams?.length) this._cams = [...new Set([...(this._reoCams || []), ...(wv.cameras || [])].map(ck))];
       this._loaded = true;
       this._render();
       let reoNames = this._reoCams || [];
@@ -72,7 +72,7 @@ class WansviewNvrCard extends HTMLElement {
           merge(reo);
         }
       }
-      this._cams = [...new Set([...reoNames, ...(wv.cameras || [])].map(ck))];
+      if (!this._filter || !this._cams?.length) this._cams = [...new Set([...reoNames, ...(wv.cameras || [])].map(ck))];
       if (this._config.cameras) {
         const latest = {};
         await Promise.all(
