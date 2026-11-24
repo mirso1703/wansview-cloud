@@ -1600,7 +1600,7 @@ class RipacStrujaKalibCard extends RipacStrujaCard {
       .rr.big b { font-size:18px; color:var(--primary-color); }
       .warn { font-size:12px; color:#ffb74d; background:rgba(255,183,77,.1); border-radius:10px; padding:8px 10px; }
       .sdw { display:flex; gap:4px; align-items:flex-end; }
-      .sd { flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; gap:2px; }
+      .sd { flex:1 1 0; min-width:0; max-width:48px; display:flex; flex-direction:column; align-items:center; gap:2px; }
       .sb { position:relative; width:100%; height:90px; display:flex; align-items:flex-end; justify-content:center; gap:2px; }
       .sb i { display:block; width:42%; border-radius:3px 3px 0 0; min-height:1px; } .sb .f, .lg2 .f { background:rgba(255,213,79,.35); } .sb .a, .lg2 .a { background:#ffb300; } .sb .a.cut, .lg2 .cut { background:repeating-linear-gradient(45deg,#ffb300 0 3px,#8d6e00 3px 6px); }
       .sl { font-size:9.5px; text-align:center; line-height:1.15; color:var(--secondary-text-color); } .sx { font-size:10px; font-weight:700; } .sc { font-size:9px; color:var(--secondary-text-color); white-space:nowrap; }
