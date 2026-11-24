@@ -1337,6 +1337,129 @@ class RipacZivotinjeCard extends HTMLElement {
 }
 
 if (!customElements.get("ripac-zivotinje-card")) customElements.define("ripac-zivotinje-card", RipacZivotinjeCard);
+
+/* ---------- Struja iz mreže: histogram (sat/dan/mjesec) + trošak po tarifama ---------- */
+class RipacStrujaCard extends HTMLElement {
+  setConfig(c) {
+    this._c = Object.assign({ entity: "sensor.ripac_q0048088723771_energija_iz_mreze", vt: "input_number.cijena_struje_vt", mt: "input_number.cijena_struje_mt", fiksno: 13.1 }, c || {});
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this._tab = this._tab || "dan";
+  }
+  getCardSize() { return 5; }
+  set hass(h) {
+    this._hass = h;
+    if (!this._t || Date.now() - this._t > 300000) { this._t = Date.now(); this._load(); }
+  }
+  _isMT(d) { // EP BiH niža tarifa (isto kao binary_sensor.jeftina_struja_niza_tarifa)
+    const jan = new Date(d.getFullYear(), 0, 1).getTimezoneOffset(), jul = new Date(d.getFullYear(), 6, 1).getTimezoneOffset();
+    const ljeto = d.getTimezoneOffset() < Math.max(jan, jul);
+    const hr = d.getHours();
+    return d.getDay() === 0 || (ljeto ? (hr < 8 || (hr >= 14 && hr < 17) || hr >= 23) : (hr < 7 || (hr >= 13 && hr < 16) || hr >= 22));
+  }
+  async _load() {
+    const now = new Date();
+    const start = new Date(now.getFullYear() - 1, now.getMonth(), 1);
+    try {
+      const r = await this._hass.callWS({ type: "recorder/statistics_during_period", start_time: start.toISOString(), period: "hour",
+        statistic_ids: [this._c.entity], types: ["change"], units: { energy: "kWh" } });
+      this._rows = (r[this._c.entity] || []).map((x) => ({ t: new Date(x.start), kwh: Math.max(0, x.change || 0) }));
+    } catch (e) { this._rows = []; this._err = e.message; }
+    this._render();
+  }
+  _price() {
+    const v = parseFloat((this._hass.states[this._c.vt] || {}).state) || 0.236, m = parseFloat((this._hass.states[this._c.mt] || {}).state) || 0.1197;
+    return { v, m };
+  }
+  _agg(keyFn, filter) {
+    const pr = this._price(), out = new Map();
+    (this._rows || []).filter(filter).forEach((x) => {
+      const k = keyFn(x.t); const o = out.get(k) || { vt: 0, mt: 0, km: 0 };
+      if (this._isMT(x.t)) { o.mt += x.kwh; o.km += x.kwh * pr.m; } else { o.vt += x.kwh; o.km += x.kwh * pr.v; }
+      out.set(k, o);
+    });
+    return out;
+  }
+  _render() {
+    if (!this._hass) return;
+    const now = new Date(), p2 = (n) => String(n).padStart(2, "0");
+    const dayKey = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+    const monKey = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}`;
+    const MJ = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+    let bars = [], title = "";
+    if (this._tab === "dan") {
+      const today = dayKey(now); const m = this._agg((t) => t.getHours(), (x) => dayKey(x.t) === today);
+      for (let i = 0; i < 24; i++) bars.push({ l: i % 3 === 0 ? p2(i) : "", full: `${p2(i)}:00–${p2(i + 1)}:00`, o: m.get(i) || { vt: 0, mt: 0, km: 0 }, fut: i > now.getHours(), mtHour: this._isMT(new Date(now.getFullYear(), now.getMonth(), now.getDate(), i)) });
+      title = "Danas po satima";
+    } else if (this._tab === "mjesec") {
+      const from = new Date(now); from.setDate(from.getDate() - 29); from.setHours(0, 0, 0, 0);
+      const m = this._agg(dayKey, (x) => x.t >= from);
+      for (let i = 0; i < 30; i++) { const d = new Date(from); d.setDate(from.getDate() + i); const k = dayKey(d);
+        bars.push({ l: d.getDate() === 1 || i % 5 === 0 ? `${d.getDate()}.` : "", full: `${d.getDate()}.${d.getMonth() + 1}.`, o: m.get(k) || { vt: 0, mt: 0, km: 0 }, sun: d.getDay() === 0 }); }
+      title = "Zadnjih 30 dana";
+    } else {
+      const m = this._agg(monKey, () => true);
+      for (let i = 11; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); const k = monKey(d);
+        bars.push({ l: MJ[d.getMonth()], full: `${MJ[d.getMonth()]} ${d.getFullYear()}`, o: m.get(k) || { vt: 0, mt: 0, km: 0 } }); }
+      title = "Zadnjih 12 mjeseci";
+    }
+    const max = Math.max(0.001, ...bars.map((b) => b.o.vt + b.o.mt));
+    const sum = bars.reduce((a, b) => ({ vt: a.vt + b.o.vt, mt: a.mt + b.o.mt, km: a.km + b.o.km }), { vt: 0, mt: 0, km: 0 });
+    // KPI: danas, ovaj mjesec (+ fiksno), projekcija
+    const tm = this._agg(() => "x", (x) => dayKey(x.t) === dayKey(now)).get("x") || { vt: 0, mt: 0, km: 0 };
+    const mm = this._agg(() => "x", (x) => monKey(x.t) === monKey(now)).get("x") || { vt: 0, mt: 0, km: 0 };
+    const pm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const pmm = this._agg(() => "x", (x) => monKey(x.t) === monKey(pm)).get("x") || { vt: 0, mt: 0, km: 0 };
+    const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(), elapsed = (now.getDate() - 1) + now.getHours() / 24 + now.getMinutes() / 1440;
+    const proj = elapsed > 0.5 ? (mm.km / elapsed) * dim + this._c.fiksno : null;
+    const km = (v) => `${v.toFixed(2).replace(".", ",")} KM`, kw = (v) => `${v < 10 ? v.toFixed(2) : v.toFixed(1)} kWh`;
+    const barsHtml = bars.map((b, i) => {
+      const t = b.o.vt + b.o.mt, hv = (b.o.vt / max) * 100, hm = (b.o.mt / max) * 100;
+      return `<div class="bc ${b.fut ? "fut" : ""} ${this._sel === i ? "sel" : ""}" data-i="${i}">
+        <div class="st">${t > 0 ? `<i class="vt" style="height:${hv}%"></i><i class="mt" style="height:${hm}%"></i>` : `<i class="zero ${b.mtHour ? "m" : ""}"></i>`}</div>
+        <div class="bl ${b.sun ? "sun" : ""}">${b.l}</div></div>`;
+    }).join("");
+    const sel = this._sel != null && bars[this._sel] ? bars[this._sel] : null;
+    const info = sel ? `<b>${sel.full}</b> · ${kw(sel.o.vt + sel.o.mt)} · ${km(sel.o.km)}${sel.o.vt && sel.o.mt ? ` <span>(VT ${kw(sel.o.vt)}, MT ${kw(sel.o.mt)})</span>` : sel.o.mt ? " <span>· jeftina</span>" : sel.o.vt ? " <span>· skupa</span>" : ""}`
+      : `${title}: <b>${kw(sum.vt + sum.mt)}</b> · <b>${km(sum.km)}</b> <span>(skupa ${kw(sum.vt)}, jeftina ${kw(sum.mt)})</span>`;
+    this.shadowRoot.innerHTML = `<style>
+      ha-card { padding:14px 14px 12px; }
+      .hd { display:flex; align-items:center; gap:8px; } .hd .t { font-size:16px; font-weight:600; }
+      .hd ha-icon { --mdc-icon-size:22px; color:#b39ddb; }
+      .seg { margin-left:auto; display:flex; background:rgba(127,127,127,.15); border-radius:10px; padding:2px; }
+      .seg button { border:0; background:none; color:var(--secondary-text-color); font-size:12px; font-weight:600; padding:5px 9px; border-radius:8px; cursor:pointer; }
+      .seg button.on { background:var(--card-background-color,#222); color:var(--primary-text-color); box-shadow:0 1px 3px rgba(0,0,0,.25); }
+      .kp { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:10px; }
+      .k { background:rgba(127,127,127,.09); border-radius:12px; padding:8px 10px; }
+      .kl { font-size:10.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; color:var(--secondary-text-color); }
+      .kv { font-size:17px; font-weight:800; margin-top:2px; white-space:nowrap; } .ks { font-size:11px; color:var(--secondary-text-color); margin-top:1px; }
+      .ch { display:flex; align-items:flex-end; gap:2px; height:120px; margin-top:12px; }
+      .bc { flex:1 1 0; min-width:0; height:100%; display:flex; flex-direction:column; cursor:pointer; }
+      .st { flex:1; display:flex; flex-direction:column-reverse; border-radius:4px 4px 0 0; overflow:hidden; }
+      .st i { display:block; width:100%; } .st .vt { background:#ffb74d; } .st .mt { background:#64b5f6; }
+      .st .zero { height:2px; background:rgba(255,183,77,.25); } .st .zero.m { background:rgba(100,181,246,.25); }
+      .bc.fut .st { opacity:.35; } .bc.sel .st { outline:2px solid var(--primary-text-color); outline-offset:1px; }
+      .bl { height:14px; font-size:9.5px; text-align:center; color:var(--secondary-text-color); white-space:nowrap; overflow:visible; } .bl.sun { color:#64b5f6; }
+      .info { margin-top:8px; font-size:12.5px; line-height:1.4; } .info span { color:var(--secondary-text-color); }
+      .lg { display:flex; gap:12px; margin-top:6px; font-size:11px; color:var(--secondary-text-color); } .lg em { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+    </style><ha-card>
+      <div class="hd"><ha-icon icon="mdi:transmission-tower"></ha-icon><div class="t">Struja iz mreže</div>
+        <div class="seg">${[["dan", "Dan"], ["mjesec", "30 dana"], ["godina", "Godina"]].map(([k, l]) => `<button data-t="${k}" class="${this._tab === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
+      <div class="kp">
+        <div class="k"><div class="kl">Danas</div><div class="kv">${km(tm.km)}</div><div class="ks">${kw(tm.vt + tm.mt)}</div></div>
+        <div class="k"><div class="kl">Ovaj mjesec</div><div class="kv">${km(mm.km + this._c.fiksno)}</div><div class="ks">${kw(mm.vt + mm.mt)} + fiksno ${km(this._c.fiksno)}</div></div>
+        <div class="k"><div class="kl">Procjena računa</div><div class="kv">${proj != null ? km(proj) : "–"}</div><div class="ks">prošli mj. ${km(pmm.km + this._c.fiksno)}</div></div>
+      </div>
+      <div class="ch">${barsHtml}</div>
+      <div class="lg"><span><em style="background:#ffb74d"></em>skupa (VT ${this._price().v.toFixed(3)})</span><span><em style="background:#64b5f6"></em>jeftina (MT ${this._price().m.toFixed(3)})</span></div>
+      <div class="info">${info}</div>
+    </ha-card>`;
+    const R = this.shadowRoot;
+    R.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => { this._tab = b.dataset.t; this._sel = null; this._render(); }));
+    R.querySelectorAll(".bc").forEach((b) => b.addEventListener("click", () => { const i = +b.dataset.i; this._sel = this._sel === i ? null : i; this._render(); }));
+  }
+}
+
+if (!customElements.get("ripac-struja-card")) customElements.define("ripac-struja-card", RipacStrujaCard);
 if (!customElements.get("ripac-osobe-card")) customElements.define("ripac-osobe-card", RipacOsobeCard);
 if (!customElements.get("ripac-vozila-card")) customElements.define("ripac-vozila-card", RipacVozilaCard);
 if (!customElements.get("ripac-security-card")) customElements.define("ripac-security-card", RipacSecurityCard);
