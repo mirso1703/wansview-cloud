@@ -32,13 +32,23 @@
   // ---- 2) prepoznavanje životinja
   const Z = await get("automation", "zivotinje_prepoznavanje"); backup.zivotinje = JSON.parse(JSON.stringify(Z));
   const S = await get("script", "zivotinja_prepoznaj"); backup.script = JSON.parse(JSON.stringify(S));
+  const V = await get("automation", "vozila_prepoznavanje"); backup.vozila = JSON.parse(JSON.stringify(V));
+  const VS = await get("script", "vozilo_prepoznaj"); backup.vscript = JSON.parse(JSON.stringify(VS));
+  // ograniči i ponavljanja (Gemini 503 petlje) na max 6 pokušaja
+  for (const c of [Z, S, V, VS]) walk(c, (a) => {
+    if (a.repeat && a.repeat.until) { const u = Array.isArray(a.repeat.until) ? a.repeat.until : [a.repeat.until]; if (!JSON.stringify(u).includes("repeat.index > 6")) a.repeat.until = [{ condition: "or", conditions: [{ condition: "template", value_template: "{{ repeat.index > 6 }}" }, ...u.map((x) => (typeof x === "string" ? { condition: "template", value_template: x } : x))] }]; }
+    if (a.repeat && a.repeat.while) { const w = Array.isArray(a.repeat.while) ? a.repeat.while : [a.repeat.while]; if (!JSON.stringify(w).includes("repeat.index <= 6")) a.repeat.while = [{ condition: "template", value_template: "{{ repeat.index <= 6 }}" }, ...w]; }
+  });
+  for (const c of [V, VS]) walk(c, (a) => { if ((a.wait_template || a.wait_for_trigger) && !a.timeout) { a.timeout = "00:03:00"; a.continue_on_timeout = false; } });
+  V.mode = "restart";
   for (const c of [Z, S]) walk(c, (a) => {
     if ((a.wait_template || a.wait_for_trigger) && !a.timeout) { a.timeout = "00:03:00"; a.continue_on_timeout = false; }
     if (isNotify(a)) { a.data = a.data || {}; a.data.data = a.data.data || {}; a.data.data.tag = TAG; }
   });
   Z.mode = "restart";
   window.__ripacBackup = backup;
-  const r = { pokret: await put("automation", "kamera_pokret_obavijest", P), zivotinje: await put("automation", "zivotinje_prepoznavanje", Z), script: await put("script", "zivotinja_prepoznaj", S) };
+  const r = { pokret: await put("automation", "kamera_pokret_obavijest", P), zivotinje: await put("automation", "zivotinje_prepoznavanje", Z), script: await put("script", "zivotinja_prepoznaj", S),
+    vozila: await put("automation", "vozila_prepoznavanje", V), vscript: await put("script", "vozilo_prepoznaj", VS) };
   console.log("Rezultat", r, "Backup u window.__ripacBackup");
   return r;
 })();
