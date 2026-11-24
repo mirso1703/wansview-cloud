@@ -175,11 +175,28 @@ class WansviewNvrCard extends HTMLElement {
     if (!this._tlDay || !byDay[this._tlDay]) this._tlDay = daysAvail.find((d) => byDay[d].length) || todayKey;
     const day = this._tlDay;
     const kinds = this._kinds || (this._kinds = new Set(["person", "vehicle", "animal", "motion"]));
-    const all = byDay[day];
+    // same camera from Reolink SD card and from the NVR folder ("Ulaz Vikendica" / "Ulaz") → one lane;
+    // an NVR snapshot that falls inside a Reolink event gives that event its picture instead of a second pill
+    const ck = (c) => String(c || "").replace(/ Vikendica$/, "");
+    const raw = byDay[day].map((it) => ({ ...it, _ck: ck(it.camera) }));
+    const reo = raw.filter((it) => it.reolink);
+    const all = raw.filter((it) => {
+      if (it.reolink) return true;
+      const s = this._secs(it.time);
+      const hit = reo.find((r) => r._ck === it._ck && s >= this._secs(r.time) - 20 && s <= this._secs(r.time) + this._durSecs(r) + 20);
+      if (!hit) return true;
+      if (!hit.image && it.image) hit.image = it.image;
+      if (!hit.videos.length && it.videos?.length) hit.videos = it.videos;
+      return false;
+    });
+    this._tlAll = all;
     const counts = { person: 0, vehicle: 0, animal: 0, motion: 0 };
     all.forEach((it) => counts[this._kind(it)]++);
-    const cams = [...new Set(all.map((it) => it.camera))].sort();
-    if (!cams.length) cams.push(...new Set(this._items.map((it) => it.camera)));
+    const cams = [...new Set(all.map((it) => it._ck))];
+    if (!cams.length) cams.push(...new Set(this._items.map((it) => ck(it.camera))));
+    const ncount = (c) => all.filter((it) => it._ck === c && kinds.has(this._kind(it))).length;
+    cams.sort((a, b) => ncount(b) - ncount(a) || a.localeCompare(b));
+    const disp = (c) => ({ Sadrvan: "Šadrvan", "Kuća Parking": "Parking", Iza: "Iza kuće", ...(this._config.names || {}) })[c] || c;
     const z = this._zoom;
     const pct = (sec) => (sec / 86400) * 100;
     const isToday = day === todayKey;
@@ -211,8 +228,18 @@ class WansviewNvrCard extends HTMLElement {
     const hist = bins
       .map((b, i) => {
         if (!b.n) return "";
-        const top = rank.find((k) => b.k[k]);
-        return `<div class="bar ${top}" style="left:${(i / 48) * 100}%;height:${18 + (b.n / max) * 82}%"></div>`;
+        const h = 18 + (b.n / max) * 82;
+        let acc = 0;
+        const segs = rank
+          .filter((k) => b.k[k])
+          .map((k) => {
+            const sh = (b.k[k] / b.n) * 100;
+            const el = `<i class="${k}" style="bottom:${acc}%;height:${sh}%"></i>`;
+            acc += sh;
+            return el;
+          })
+          .join("");
+        return `<div class="bar" style="left:${(i / 48) * 100}%;height:${h}%" title="${String(Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"} · ${b.n}">${segs}</div>`;
       })
       .join("");
 
@@ -221,29 +248,43 @@ class WansviewNvrCard extends HTMLElement {
     for (let hr = 0; hr < 24; hr++)
       ticks.push(`<div class="tick ${hr % step ? "minor" : ""}" style="left:${pct(hr * 3600)}%">${hr % step ? "" : `<span>${String(hr).padStart(2, "0")}:00</span>`}</div>`);
 
+    const gap = 420 / z; // events closer than this (s) become one pill
     const lanes = cams
       .map((cam) => {
         const evs = all
-          .map((it, i) => ({ it, i }))
-          .filter(({ it }) => it.camera === cam && kinds.has(this._kind(it)))
-          .map(({ it, i }) => {
-            const s = this._secs(it.time);
-            return `<div class="ev ${this._kind(it)}" data-i="${i}" style="left:${pct(s)}%;width:${pct(this._durSecs(it))}%"></div>`;
+          .map((it, i) => ({ it, i, s: this._secs(it.time), k: this._kind(it) }))
+          .filter(({ it, k }) => it._ck === cam && kinds.has(k))
+          .sort((a, b) => a.s - b.s);
+        const groups = [];
+        for (const e of evs) {
+          const g = groups[groups.length - 1];
+          const end = e.s + this._durSecs(e.it);
+          if (g && e.s - g.e <= gap) {
+            g.e = Math.max(g.e, end);
+            g.list.push(e);
+          } else groups.push({ s: e.s, e: end, list: [e] });
+        }
+        return `<div class="lane"><div class="track"></div>${groups
+          .map((g) => {
+            const best = rank.map((k) => g.list.find((x) => x.k === k)).find(Boolean);
+            const n = g.list.length;
+            const t0 = g.list[0].it.time.slice(0, 5);
+            const tip = `${t0}${n > 1 ? ` · ${n} događaja` : ""} · ${{ person: "osoba", vehicle: "vozilo", animal: "životinja", motion: "pokret" }[best.k]}`;
+            return `<div class="ev ${best.k}" data-i="${best.i}" title="${tip}" style="left:${pct(g.s)}%;width:${pct(Math.max(60, g.e - g.s))}%">${n > 1 ? `<b>${n}</b>` : ""}</div>`;
           })
-          .join("");
-        return `<div class="lane"><div class="track"></div>${evs}</div>`;
+          .join("")}</div>`;
       })
       .join("");
     const names = cams
       .map((cam) => {
-        const its = all.filter((it) => it.camera === cam && kinds.has(this._kind(it)));
-        const img = (its.find((it) => it.image) || {}).image;
-        return `<div class="nm">${img ? `<img src="${img}">` : `<span class="ava">${this._esc(cam[0] || "?")}</span>`}
-          <div class="nx"><span class="nt">${this._esc(cam.replace(/ Vikendica$/, ""))}</span><span class="bd">${its.length} ${its.length === 1 ? "događaj" : "događaja"}</span></div></div>`;
+        const its = all.filter((it) => it._ck === cam && kinds.has(this._kind(it)));
+        const img = ([...its].reverse().find((it) => it.image) || {}).image;
+        return `<div class="nm">${img ? `<img src="${img}">` : `<span class="ava">${this._esc(disp(cam)[0] || "?")}</span>`}
+          <div class="nx"><span class="nt">${this._esc(disp(cam))}</span><span class="bd">${its.length} ${its.length === 1 ? "događaj" : "događaja"}</span></div></div>`;
       })
       .join("");
     const dayChips = daysAvail
-      .map((d) => `<button class="dchip ${d === day ? "on" : ""}" data-day="${d}">${this._dayLabel(d)}<small>${byDay[d].length}</small></button>`)
+      .map((d) => `<button class="dchip ${d === day ? "on" : ""}" data-day="${d}">${this._dayLabel(d, true)}<small>${byDay[d].length}</small></button>`)
       .join("");
     const label = { person: "Osoba", vehicle: "Vozilo", animal: "Životinja", motion: "Pokret" };
     const icon = { person: "🧍", vehicle: "🚗", animal: "🐾", motion: "〰️" };
@@ -256,7 +297,7 @@ class WansviewNvrCard extends HTMLElement {
       .map(
         ({ it, i }) => `<div class="row" data-i="${i}">
           <div class="rthumb ${this._kind(it)}">${it.image ? `<img loading="lazy" src="${it.image}">` : `<span>${icon[this._kind(it)]}</span>`}</div>
-          <div class="rtx"><b>${this._esc(it.time.slice(0, 5))}</b><span>${this._esc(it.camera)}${it.count > 1 ? ` · ${it.count} klipa` : ""}${it.dur ? ` · ${this._esc(it.dur)}` : ""}</span></div>
+          <div class="rtx"><b>${this._esc(it.time.slice(0, 5))}</b><span>${this._esc(disp(it._ck))}${it.count > 1 ? ` · ${it.count} klipa` : ""}${it.dur ? ` · ${this._esc(it.dur)}` : ""}</span></div>
           <span class="rk ${this._kind(it)}">${label[this._kind(it)]}</span></div>`
       )
       .join("");
@@ -277,7 +318,7 @@ class WansviewNvrCard extends HTMLElement {
       <div class="tlist">${list || `<div class="empty">Nema događaja za ovaj dan.</div>`}</div>`;
   }
 
-  _dayLabel(day) {
+  _dayLabel(day, short) {
     const d = new Date(day + "T12:00:00");
     const today = new Date();
     const y = new Date();
@@ -285,7 +326,8 @@ class WansviewNvrCard extends HTMLElement {
     const same = (a, b) => a.toDateString() === b.toDateString();
     if (same(d, today)) return "Danas";
     if (same(d, y)) return "Jučer";
-    return d.toLocaleDateString("bs-BA", { weekday: "long", day: "numeric", month: "long" });
+    const wd = short ? ["Ned", "Pon", "Uto", "Sri", "Čet", "Pet", "Sub"] : ["Nedjelja", "Ponedjeljak", "Utorak", "Srijeda", "Četvrtak", "Petak", "Subota"];
+    return `${wd[d.getDay()]}, ${d.getDate()}.${d.getMonth() + 1}.`;
   }
 
   _esc(s) {
@@ -435,17 +477,18 @@ class WansviewNvrCard extends HTMLElement {
         .sunmark { position:absolute; top:1px; transform:translateX(-50%); font-size:13px; color:#ffca28; pointer-events:none; }
         .sunmark.moon { color:#9fa8da; }
         .hist { position:relative; height:34px; margin-top:2px; }
-        .bar { position:absolute; bottom:0; width:calc(100% / 48 - 2px); margin-left:1px; border-radius:3px 3px 1px 1px;
-               background:linear-gradient(180deg,var(--c),color-mix(in srgb,var(--c) 25%,transparent)); opacity:.8; }
+        .bar { position:absolute; bottom:0; width:calc(100% / 48 - 2px); margin-left:1px; border-radius:3px 3px 1px 1px; overflow:hidden; opacity:.85; }
+        .bar i { position:absolute; left:0; right:0; background:var(--c); }
         .axis { position:relative; height:22px; border-bottom:1px solid rgba(127,127,127,.16); }
         .tick { position:absolute; top:0; bottom:-1000px; border-left:1px solid rgba(127,127,127,.13); pointer-events:none; }
         .tick.minor { border-left:1px dotted rgba(127,127,127,.08); }
         .tick span { position:absolute; top:5px; left:4px; font-size:10px; font-weight:600; color:var(--secondary-text-color); letter-spacing:.2px; }
         .lane { position:relative; height:42px; }
         .track { position:absolute; left:4px; right:4px; top:17px; height:8px; border-radius:4px; background:rgba(127,127,127,.09); }
-        .ev { position:absolute; top:12px; height:18px; min-width:7px; border-radius:9px; cursor:pointer; transform:translateX(-3px);
-              background:linear-gradient(180deg,color-mix(in srgb,var(--c) 85%,#fff),var(--c)); box-shadow:0 0 10px color-mix(in srgb,var(--c) 55%,transparent);
-              transition:transform .15s; }
+        .ev { position:absolute; top:11px; height:20px; min-width:10px; border-radius:10px; cursor:pointer; transform:translateX(-3px);
+              background:var(--c); box-shadow:0 0 0 2px rgba(0,0,0,.35); transition:transform .15s;
+              display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .ev b { font-size:10px; font-weight:800; color:rgba(0,0,0,.72); padding:0 4px; }
         .ev:hover { transform:translateX(-3px) scaleY(1.25); z-index:3; }
         .now { position:absolute; top:0; bottom:0; width:2px; background:#ffeb3b; box-shadow:0 0 8px #ffeb3b; pointer-events:none; z-index:4; }
         .now span { position:absolute; top:2px; left:4px; font-size:10px; font-weight:800; color:#111; background:#ffeb3b; border-radius:6px; padding:0 5px; }
@@ -523,7 +566,7 @@ class WansviewNvrCard extends HTMLElement {
       })
     );
     this.shadowRoot.querySelectorAll(".ev, .row").forEach((t) =>
-      t.addEventListener("click", () => this._open(byDay[this._tlDay][+t.dataset.i]))
+      t.addEventListener("click", () => this._open((this._tlAll || byDay[this._tlDay])[+t.dataset.i]))
     );
     if (prevLeft !== null) {
       const sc = this.shadowRoot.querySelector(".tlscroll");
