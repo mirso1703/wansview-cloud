@@ -178,17 +178,7 @@ class WansviewNvrCard extends HTMLElement {
     // same camera from Reolink SD card and from the NVR folder ("Ulaz Vikendica" / "Ulaz") → one lane;
     // an NVR snapshot that falls inside a Reolink event gives that event its picture instead of a second pill
     const ck = (c) => String(c || "").replace(/ Vikendica$/, "");
-    const raw = byDay[day].map((it) => ({ ...it, _ck: ck(it.camera) }));
-    const reo = raw.filter((it) => it.reolink);
-    const all = raw.filter((it) => {
-      if (it.reolink) return true;
-      const s = this._secs(it.time);
-      const hit = reo.find((r) => r._ck === it._ck && s >= this._secs(r.time) - 20 && s <= this._secs(r.time) + this._durSecs(r) + 20);
-      if (!hit) return true;
-      if (!hit.image && it.image) hit.image = it.image;
-      if (!hit.videos.length && it.videos?.length) hit.videos = it.videos;
-      return false;
-    });
+    const all = this._dedup(byDay[day]);
     this._tlAll = all;
     const counts = { person: 0, vehicle: 0, animal: 0, motion: 0 };
     all.forEach((it) => counts[this._kind(it)]++);
@@ -284,7 +274,7 @@ class WansviewNvrCard extends HTMLElement {
       })
       .join("");
     const dayChips = daysAvail
-      .map((d) => `<button class="dchip ${d === day ? "on" : ""}" data-day="${d}">${this._dayLabel(d, true)}<small>${byDay[d].length}</small></button>`)
+      .map((d) => `<button class="dchip ${d === day ? "on" : ""}" data-day="${d}">${this._dayLabel(d, true)}<small>${d === day ? all.length : this._dedup(byDay[d]).length}</small></button>`)
       .join("");
     const label = { person: "Osoba", vehicle: "Vozilo", animal: "Životinja", motion: "Pokret" };
     const icon = { person: "🧍", vehicle: "🚗", animal: "🐾", motion: "〰️" };
@@ -316,6 +306,23 @@ class WansviewNvrCard extends HTMLElement {
       </div>
       <div class="zoom">${[1, 2, 4, 8].map((x) => `<button data-z="${x}" class="${x === z ? "on" : ""}">${x}×</button>`).join("")}</div>
       <div class="tlist">${list || `<div class="empty">Nema događaja za ovaj dan.</div>`}</div>`;
+  }
+
+  // same camera from Reolink SD card and from the NVR folder ("Ulaz Vikendica" / "Ulaz") → one lane;
+  // an NVR snapshot that falls inside a Reolink event gives that event its picture instead of a second pill
+  _dedup(items) {
+    const ck = (c) => String(c || "").replace(/ Vikendica$/, "");
+    const raw = (items || []).map((it) => ({ ...it, _ck: ck(it.camera) }));
+    const reo = raw.filter((it) => it.reolink);
+    return raw.filter((it) => {
+      if (it.reolink) return true;
+      const s = this._secs(it.time);
+      const hit = reo.find((r) => r._ck === it._ck && s >= this._secs(r.time) - 20 && s <= this._secs(r.time) + this._durSecs(r) + 20);
+      if (!hit) return true;
+      if (!hit.image && it.image) hit.image = it.image;
+      if (!hit.videos.length && it.videos?.length) hit.videos = it.videos;
+      return false;
+    });
   }
 
   _dayLabel(day, short) {
