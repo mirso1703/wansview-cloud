@@ -49,6 +49,7 @@ class WansviewNvrCard extends HTMLElement {
       const ck = (c) => String(c || "").replace(/ Vikendica$/, "");
       if (this._filter) msg.camera = this._filter;
       const wv = await this._hass.callWS(msg).catch(() => ({ items: [], cameras: [] }));
+      await this._loadAnn();
       const wvItems = this._group(wv.items || []);
       const merge = (reo) => {
         let items = wvItems.concat(reo);
@@ -557,6 +558,17 @@ class WansviewNvrCard extends HTMLElement {
         .nv .ph span { position:absolute; top:2px; left:50%; transform:translateX(-50%); font-size:11px; font-weight:800; color:#111; background:#ffeb3b; border-radius:7px; padding:1px 7px; white-space:nowrap; }
         .nv .zoom { display:flex; justify-content:flex-end; align-items:center; gap:4px; margin:8px 0 4px; }
         .nv .zoom .zh { flex:1; font-size:11px; color:var(--secondary-text-color); }
+
+        .nv .pdesc { position:absolute; left:8px; right:8px; bottom:8px; display:none; font-size:12.5px; line-height:1.3; color:#fff; background:rgba(0,0,0,.55); backdrop-filter:blur(4px); border-radius:9px; padding:5px 9px; pointer-events:none; }
+        .nv .ev.none { opacity:.3; }
+        .nv .ev.known { box-shadow:0 0 0 2px #81c784; }
+        .nv .row.none { opacity:.5; }
+        .nv .rtx em.al { font-style:normal; font-size:12px; font-weight:700; margin-left:6px; padding:1px 7px; border-radius:8px; background:rgba(127,127,127,.18); color:var(--primary-text-color); }
+        .nv .rtx em.al.known { background:rgba(102,187,106,.2); color:#a5d6a7; }
+        .nv .rtx .rc { font-size:11px !important; opacity:.7; }
+        .nv .rtx span { white-space:normal !important; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+        .nv .bfw { display:flex; align-items:center; gap:8px; margin:6px 0; }
+        .nv .bf { border:0; border-radius:10px; padding:7px 12px; font:inherit; font-size:12.5px; font-weight:700; background:rgba(127,127,127,.15); color:var(--primary-text-color); cursor:pointer; }
         .nv .row.cur { background:rgba(127,127,127,.22); }
         .tlist { margin-top:6px; display:flex; flex-direction:column; gap:4px; max-height:55vh; overflow-y:auto; }
         .row { display:flex; align-items:center; gap:10px; padding:6px; border-radius:12px; cursor:pointer; background:rgba(127,127,127,.06); transition:background .15s; }
@@ -652,6 +664,52 @@ class WansviewNvrCard extends HTMLElement {
   }
 
 
+  // oznake snimaka (Gemini: poznato auto, životinja, osobe…) iz todo.snimci_oznake
+  async _loadAnn() {
+    const ent = this._config.oznake || "todo.snimci_oznake";
+    if (!this._hass || !this._hass.states[ent]) return;
+    try {
+      const r = await this._hass.callWS({ type: "todo/item/list", entity_id: ent });
+      const m = new Map();
+      for (const i of r.items || []) { try { m.set(i.summary, JSON.parse(i.description || "{}")); } catch (e) {} }
+      this._ann = m;
+    } catch (e) {}
+  }
+
+  _annOf(it) { return this._ann && this._ann.get(`${it.camera}|${it.day}|${it.time}`); }
+
+  async _annBackfill(btn) {
+    if (this._bfRun) { this._bfRun = false; return; }
+    const todo = this._nv.ev.filter((e) => !e.reolink && !e.ann && (e.video || (e.videos && e.videos[0]) || e.image) && !/^Ulaz/.test(e.camera)).reverse();
+    this._bfRun = true;
+    let done = 0;
+    for (const e of todo) {
+      if (!this._bfRun) break;
+      btn.textContent = `Označavam ${done + 1}/${todo.length} · stani`;
+      const ext = (e.video || (e.videos && e.videos[0])) ? "mp4" : "jpg";
+      const file = `/media/wansview/${e.camera}/${e.day}/${e.time.replace(/:/g, "-")}.${ext}`;
+      try {
+        const r = await this._hass.callWS({ type: "execute_script", sequence: [{ action: "script.snimak_analiziraj", data: { camera: e.camera, day: e.day, time: e.time, file }, response_variable: "x" }, { stop: "", response_variable: "x" }] });
+        const a = r.response;
+        if (a && a.ok) { e.ann = { k: a.kind, l: a.oznaka, o: a.opis, pv: a.poznato_vozilo, pz: a.poznata_zivotinja }; if (this._ann) this._ann.set(a.key, e.ann); }
+      } catch (x) {}
+      done++;
+      if (done % 3 === 0) { this._nvrApplyAnn(); this._nvrDraw(); }
+    }
+    this._bfRun = false;
+    this._nvrApplyAnn(); this._nvrDraw();
+  }
+
+  _nvrApplyAnn() {
+    for (const e of this._nv.ev) {
+      const a = e.ann || this._annOf(e);
+      if (!a) continue;
+      e.ann = a;
+      e.kind = { person: "person", vehicle: "vehicle", animal: "animal" }[a.k] || "motion";
+      e.none = a.k === "none";
+    }
+  }
+
   // ================= NVR timeline (scrub, pinch-zoom, player) =================
   _nvrBuild() {
     const el = document.createElement("div");
@@ -660,16 +718,18 @@ class WansviewNvrCard extends HTMLElement {
       <div class="dchips"></div>
       <div class="legend"></div>
       <div class="pv"><img class="pimg" alt=""><video class="pvid" playsinline muted preload="auto"></video>
-        <div class="pempty"></div><div class="pinfo"><b class="pcam"></b><span class="pt"></span></div><div class="pkind"></div><div class="pload"></div></div>
+        <div class="pempty"></div><div class="pinfo"><b class="pcam"></b><span class="pt"></span></div><div class="pkind"></div><div class="pdesc"></div><div class="pload"></div></div>
       <div class="pctl"><button data-a="prev" title="Prethodni događaj">⏮</button><button data-a="play" class="big" title="Pusti / pauza">▶</button><button data-a="next" title="Sljedeći događaj">⏭</button>
         <button data-a="sound" title="Zvuk">🔇</button><span class="sp"></span><button data-a="full" title="Puni ekran">⛶</button><button data-a="now" class="txt">Sada</button></div>
       <div class="tlx"><div class="tlnames"></div><div class="tlwrap"><div class="tlscroll"><div class="tlinner"></div></div><div class="ph"><span></span></div></div></div>
       <div class="zoom"><span class="zh">Prstima ili Ctrl+točkić za zoom</span>${[[24, "24 h"], [6, "6 h"], [1, "1 h"], [1 / 6, "10 min"]].map(([h, l]) => `<button data-h="${h}">${l}</button>`).join("")}</div>
+      <div class="bfw"><button class="bf">Označi stare snimke</button><span class="bfn"></span></div>
       <div class="tlist"></div>`;
     this._nvrEl = el;
+    el.querySelector(".bf").addEventListener("click", (ev) => { ev.stopPropagation(); if (this._nv) this._annBackfill(ev.target); });
     const $ = (q) => el.querySelector(q);
     const sc = $(".tlscroll"), vid = $(".pvid");
-    this._nvrUi = { sc, inner: $(".tlinner"), ph: $(".ph span"), vid, img: $(".pimg"), empty: $(".pempty"), cam: $(".pcam"), pt: $(".pt"), kind: $(".pkind"), load: $(".pload"),
+    this._nvrUi = { sc, inner: $(".tlinner"), ph: $(".ph span"), vid, img: $(".pimg"), empty: $(".pempty"), cam: $(".pcam"), pt: $(".pt"), kind: $(".pkind"), load: $(".pload"), desc: $(".pdesc"),
       names: $(".tlnames"), chips: $(".dchips"), legend: $(".legend"), list: $(".tlist"), play: $('[data-a="play"]'), sound: $('[data-a="sound"]') };
     // scrubbing
     sc.addEventListener("scroll", () => {
@@ -746,6 +806,7 @@ class WansviewNvrCard extends HTMLElement {
 
   _nvrUpdate(byDay) {
     if (!this._nvrEl) return;
+    const firstLoad = !this._nv;
     this._kinds = this._kinds || new Set(["person", "vehicle", "animal", "motion"]);
     const ev = [];
     const days = Object.keys(byDay).sort().slice(-7);
@@ -757,13 +818,14 @@ class WansviewNvrCard extends HTMLElement {
       }
     ev.sort((a, b) => a.ts - b.ts);
     ev.forEach((e, i) => (e.i = i));
+    this._nv = { ...(this._nv || {}), ev };
+    this._nvrApplyAnn();
     const now = Date.now();
     const first = days.length ? new Date(days[0] + "T00:00:00").getTime() : now - 86400000;
     const tEnd = new Date(); tEnd.setHours(23, 59, 59, 999);
     const cams = [...new Set(ev.map((e) => e._ck))];
     const cnt = (c) => ev.filter((e) => e._ck === c).length;
     cams.sort((a, b) => cnt(b) - cnt(a) || a.localeCompare(b));
-    const firstLoad = !this._nv;
     this._nv = { ev, cams, start: first, end: Math.max(tEnd.getTime(), ev.length ? ev[ev.length - 1].end : 0) };
     if (this._tc == null) this._tc = ev.length ? ev[ev.length - 1].ts : now;
     this._nvrDraw();
@@ -827,7 +889,7 @@ class WansviewNvrCard extends HTMLElement {
       U.empty.style.display = "flex";
       U.empty.innerHTML = near ? `Nema snimka u ovo vrijeme<br><button class="gonear">Najbliži: ${this._esc(this._disp(near._ck))} ${p2(new Date(near.ts).getHours())}:${p2(new Date(near.ts).getMinutes())} ›</button>` : "Nema snimaka";
       const gb = U.empty.querySelector(".gonear"); if (gb) gb.onclick = (ev) => { ev.stopPropagation(); this._nvrGo(near, true); };
-      U.cam.textContent = ""; U.pt.textContent = ""; U.kind.style.display = "none";
+      U.cam.textContent = ""; U.pt.textContent = ""; U.kind.style.display = "none"; U.desc.style.display = "none";
       this._nvrMark(null);
       return;
     }
@@ -836,7 +898,9 @@ class WansviewNvrCard extends HTMLElement {
     const changed = this._cur !== e;
     this._cur = e;
     this._nvrMark(e);
-    U.cam.textContent = this._disp(e._ck);
+    U.cam.textContent = this._disp(e._ck) + (e.ann && e.ann.l ? ` · ${e.ann.l}` : "");
+    U.desc.textContent = e.ann && e.ann.o ? e.ann.o : "";
+    U.desc.style.display = e.ann && e.ann.o ? "block" : "none";
     U.pt.textContent = ` · ${this._dayLabel(e.day, true)} ${e.time.slice(0, 8)}${e.dur ? ` · ${e.dur}` : ""}${e.count > 1 ? ` · ${e.count} klipa` : ""}`;
     U.kind.className = `pkind ${e.kind}`; U.kind.textContent = label[e.kind]; U.kind.style.display = "block";
     if (e.image) { U.img.src = e.image; U.img.style.display = "block"; } else U.img.style.display = "none";
@@ -887,11 +951,13 @@ class WansviewNvrCard extends HTMLElement {
     const lab = { person: "Osoba", vehicle: "Vozilo", animal: "Životinja", motion: "Pokret" };
     U.legend.innerHTML = rank.map((k) => `<button class="lg ${k} ${kinds.has(k) ? "on" : ""}" data-k="${k}"><i></i>${lab[k]}<b>${counts[k] || 0}</b></button>`).join("");
     const icon = { person: "🧍", vehicle: "🚗", animal: "🐾", motion: "〰️" };
-    U.list.innerHTML = act.filter((e) => e.day === curDay).reverse().map((e) => `<div class="row" data-i="${e.i}">
+    U.list.innerHTML = act.filter((e) => e.day === curDay).reverse().map((e) => `<div class="row ${e.none ? "none" : ""}" data-i="${e.i}">
         <div class="rthumb ${e.kind}">${e.image ? `<img loading="lazy" src="${e.image}">` : `<span>${icon[e.kind]}</span>`}</div>
-        <div class="rtx"><b>${this._esc(e.time.slice(0, 5))}</b><span>${this._esc(this._disp(e._ck))}${e.count > 1 ? ` · ${e.count} klipa` : ""}${e.dur ? ` · ${this._esc(e.dur)}` : ""}</span></div>
-        <span class="rk ${e.kind}">${lab[e.kind]}</span></div>`).join("") || `<div class="empty">Nema događaja za ovaj dan.</div>`;
+        <div class="rtx"><b>${this._esc(e.time.slice(0, 5))}${e.ann && e.ann.l && !e.none ? ` <em class="al ${e.ann.pv || e.ann.pz ? "known" : ""}">${this._esc(e.ann.l)}</em>` : ""}</b><span>${e.ann && e.ann.o ? this._esc(e.ann.o) : `${this._esc(this._disp(e._ck))}${e.count > 1 ? ` · ${e.count} klipa` : ""}${e.dur ? ` · ${this._esc(e.dur)}` : ""}`}</span>${e.ann && e.ann.o ? `<span class="rc">${this._esc(this._disp(e._ck))}</span>` : ""}</div>
+        <span class="rk ${e.kind}">${e.none ? "ništa" : lab[e.kind]}</span></div>`).join("") || `<div class="empty">Nema događaja za ovaj dan.</div>`;
     this._phDay = curDay;
+    const un = N.ev.filter((e) => !e.reolink && !e.ann && !/^Ulaz/.test(e.camera)).length, bf = this._nvrEl.querySelector(".bf");
+    if (bf && !this._bfRun) { bf.textContent = `Označi stare snimke (${un})`; bf.parentNode.style.display = un ? "flex" : "none"; }
   }
 
   _nvrDraw() {
@@ -942,7 +1008,9 @@ class WansviewNvrCard extends HTMLElement {
       return `<div class="ln" style="top:${li * 40}px"><div class="tr"></div>${g.map((G) => {
         const best = rank.map((k) => G.l.find((y) => y.kind === k)).find(Boolean);
         const w = Math.max(8, ((G.e - G.s) / H) * s);
-        return `<div class="ev ${best.kind}" data-ev="${G.l[0].i}" data-evs="${G.l.map((y) => y.i).join(" ")}" style="left:${x(G.s)}px;width:${w}px">${G.l.length > 1 && w > 18 ? `<b>${G.l.length}</b>` : ""}</div>`;
+        const allNone = G.l.every((y) => y.none);
+        const tip = G.l.map((y) => `${y.time.slice(0, 5)} ${y.ann && y.ann.l ? y.ann.l : ""}`).slice(0, 6).join("\n");
+        return `<div class="ev ${best.kind} ${allNone ? "none" : ""} ${G.l.some((y) => y.ann && (y.ann.pv || y.ann.pz)) ? "known" : ""}" title="${this._esc(tip)}" data-ev="${G.l[0].i}" data-evs="${G.l.map((y) => y.i).join(" ")}" style="left:${x(G.s)}px;width:${w}px">${G.l.length > 1 && w > 18 ? `<b>${G.l.length}</b>` : ""}</div>`;
       }).join("")}</div>`;
     }).join("");
     const nowX = x(Date.now());
