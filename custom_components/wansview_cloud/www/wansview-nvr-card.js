@@ -805,7 +805,7 @@ class WansviewNvrCard extends HTMLElement {
     const today = new Date().toDateString() === d.toDateString();
     const WD = ["ned", "pon", "uto", "sri", "čet", "pet", "sub"];
     const dk = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
-    if (dk !== this._phDay) { this._phDay = dk; this._nvrUi.chips.querySelectorAll(".dchip").forEach((b) => b.classList.toggle("on", b.dataset.day === dk)); }
+    if (dk !== this._phDay && this._nv) { this._phDay = dk; this._nvrSide(); this._nvrMark(this._cur); }
     this._nvrUi.ph.textContent = `${today ? "" : `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}. `}${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
   }
 
@@ -874,6 +874,24 @@ class WansviewNvrCard extends HTMLElement {
     if (r) r.classList.add("cur");
   }
 
+
+  _nvrSide() {
+    const U = this._nvrUi, N = this._nv, kinds = this._kinds, rank = ["person", "vehicle", "animal", "motion"];
+    const p2 = (n) => String(n).padStart(2, "0"), act = N.ev.filter((e) => kinds.has(e.kind));
+    const days = [...new Set(N.ev.map((e) => e.day))].sort().reverse();
+    const curDay = (() => { const d = new Date(this._tc); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; })();
+    U.chips.innerHTML = days.map((d) => `<button class="dchip ${d === curDay ? "on" : ""}" data-day="${d}">${this._dayLabel(d, true)}<small>${N.ev.filter((e) => e.day === d && kinds.has(e.kind)).length}</small></button>`).join("");
+    const counts = {}; N.ev.filter((e) => e.day === curDay).forEach((e) => (counts[e.kind] = (counts[e.kind] || 0) + 1));
+    const lab = { person: "Osoba", vehicle: "Vozilo", animal: "Životinja", motion: "Pokret" };
+    U.legend.innerHTML = rank.map((k) => `<button class="lg ${k} ${kinds.has(k) ? "on" : ""}" data-k="${k}"><i></i>${lab[k]}<b>${counts[k] || 0}</b></button>`).join("");
+    const icon = { person: "🧍", vehicle: "🚗", animal: "🐾", motion: "〰️" };
+    U.list.innerHTML = act.filter((e) => e.day === curDay).reverse().map((e) => `<div class="row" data-i="${e.i}">
+        <div class="rthumb ${e.kind}">${e.image ? `<img loading="lazy" src="${e.image}">` : `<span>${icon[e.kind]}</span>`}</div>
+        <div class="rtx"><b>${this._esc(e.time.slice(0, 5))}</b><span>${this._esc(this._disp(e._ck))}${e.count > 1 ? ` · ${e.count} klipa` : ""}${e.dur ? ` · ${this._esc(e.dur)}` : ""}</span></div>
+        <span class="rk ${e.kind}">${lab[e.kind]}</span></div>`).join("") || `<div class="empty">Nema događaja za ovaj dan.</div>`;
+    this._phDay = curDay;
+  }
+
   _nvrDraw() {
     const U = this._nvrUi, N = this._nv;
     if (!U || !N) return;
@@ -936,18 +954,7 @@ class WansviewNvrCard extends HTMLElement {
       if (!img && this._hass) { const ce = Object.values(this._hass.states).find((st2) => st2.entity_id.startsWith("camera.") && (st2.attributes.friendly_name || "").toLowerCase().startsWith(cam.toLowerCase())); img = ce && ce.attributes.entity_picture; }
       return `<div class="nm">${img ? `<img src="${img}">` : `<span class="ava">${this._esc(this._disp(cam)[0] || "?")}</span>`}<div class="nx"><span class="nt">${this._esc(this._disp(cam))}</span><span class="bd">${its.filter((e) => kinds.has(e.kind)).length}</span></div></div>`;
     }).join("");
-    // day chips, legend, list
-    const days = [...new Set(N.ev.map((e) => e.day))].sort().reverse();
-    const curDay = (() => { const d = new Date(this._tc); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; })();
-    U.chips.innerHTML = days.map((d) => `<button class="dchip ${d === curDay ? "on" : ""}" data-day="${d}">${this._dayLabel(d, true)}<small>${N.ev.filter((e) => e.day === d && kinds.has(e.kind)).length}</small></button>`).join("");
-    const counts = {}; N.ev.filter((e) => e.day === curDay).forEach((e) => (counts[e.kind] = (counts[e.kind] || 0) + 1));
-    const lab = { person: "Osoba", vehicle: "Vozilo", animal: "Životinja", motion: "Pokret" };
-    U.legend.innerHTML = rank.map((k) => `<button class="lg ${k} ${kinds.has(k) ? "on" : ""}" data-k="${k}"><i></i>${lab[k]}<b>${counts[k] || 0}</b></button>`).join("");
-    const icon = { person: "🧍", vehicle: "🚗", animal: "🐾", motion: "〰️" };
-    U.list.innerHTML = act.filter((e) => e.day === curDay).reverse().map((e) => `<div class="row" data-i="${e.i}">
-        <div class="rthumb ${e.kind}">${e.image ? `<img loading="lazy" src="${e.image}">` : `<span>${icon[e.kind]}</span>`}</div>
-        <div class="rtx"><b>${this._esc(e.time.slice(0, 5))}</b><span>${this._esc(this._disp(e._ck))}${e.count > 1 ? ` · ${e.count} klipa` : ""}${e.dur ? ` · ${this._esc(e.dur)}` : ""}</span></div>
-        <span class="rk ${e.kind}">${lab[e.kind]}</span></div>`).join("") || `<div class="empty">Nema događaja za ovaj dan.</div>`;
+    this._nvrSide();
     this._nvrSetCenter(this._tc);
     this._nvrMark(this._cur);
   }
