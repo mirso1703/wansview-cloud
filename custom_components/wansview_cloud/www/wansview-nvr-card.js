@@ -804,13 +804,17 @@ class WansviewNvrCard extends HTMLElement {
     const d = new Date(this._tc), p2 = (n) => String(n).padStart(2, "0");
     const today = new Date().toDateString() === d.toDateString();
     const WD = ["ned", "pon", "uto", "sri", "čet", "pet", "sub"];
+    const dk = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+    if (dk !== this._phDay) { this._phDay = dk; this._nvrUi.chips.querySelectorAll(".dchip").forEach((b) => b.classList.toggle("on", b.dataset.day === dk)); }
     this._nvrUi.ph.textContent = `${today ? "" : `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}. `}${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
   }
 
   async _nvrSeek(play, force) {
     const U = this._nvrUi, tc = this._tc, act = this._nvrActive();
-    const tol = Math.max(3000, (14 / this._pph) * 3600000); // 14 px
-    let e = force || act.find((x) => tc >= x.ts - tol && tc <= x.end + tol);
+    const tol = Math.min(300000, Math.max(3000, (14 / this._pph) * 3600000)); // 14 px, max 5 min
+    const rk = { person: 0, vehicle: 1, animal: 2, motion: 3 };
+    const dist = (x) => (tc < x.ts ? x.ts - tc : tc > x.end ? tc - x.end : 0);
+    let e = force || act.filter((x) => dist(x) <= tol).sort((a, b) => dist(a) - dist(b) || rk[a.kind] - rk[b.kind])[0];
     const label = { person: "Osoba", vehicle: "Vozilo", animal: "Životinja", motion: "Pokret" };
     const p2 = (n) => String(n).padStart(2, "0");
     if (!e) {
