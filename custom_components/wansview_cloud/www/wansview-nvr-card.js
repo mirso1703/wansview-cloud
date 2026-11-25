@@ -563,6 +563,8 @@ class WansviewNvrCard extends HTMLElement {
         .nv .ev.none { opacity:.3; }
         .nv .ev.known { box-shadow:0 0 0 2px #81c784; }
         .nv .row.none { opacity:.5; }
+        .nv .ev.road { opacity:.5; background:repeating-linear-gradient(135deg,var(--c) 0 4px,color-mix(in srgb,var(--c) 45%,#000) 4px 8px); }
+        .nv .row.road { opacity:.7; }
         .nv .rtx em.al { font-style:normal; font-size:12px; font-weight:700; margin-left:6px; padding:1px 7px; border-radius:8px; background:rgba(127,127,127,.18); color:var(--primary-text-color); }
         .nv .rtx em.al.known { background:rgba(102,187,106,.2); color:#a5d6a7; }
         .nv .rtx .rc { font-size:11px !important; opacity:.7; }
@@ -707,6 +709,7 @@ class WansviewNvrCard extends HTMLElement {
       e.ann = a;
       e.kind = { person: "person", vehicle: "vehicle", animal: "animal" }[a.k] || "motion";
       e.none = a.k === "none";
+      e.road = a.m === "put";
     }
   }
 
@@ -951,7 +954,7 @@ class WansviewNvrCard extends HTMLElement {
     const lab = { person: "Osoba", vehicle: "Vozilo", animal: "Životinja", motion: "Pokret" };
     U.legend.innerHTML = rank.map((k) => `<button class="lg ${k} ${kinds.has(k) ? "on" : ""}" data-k="${k}"><i></i>${lab[k]}<b>${counts[k] || 0}</b></button>`).join("");
     const icon = { person: "🧍", vehicle: "🚗", animal: "🐾", motion: "〰️" };
-    U.list.innerHTML = act.filter((e) => e.day === curDay).reverse().map((e) => `<div class="row ${e.none ? "none" : ""}" data-i="${e.i}">
+    U.list.innerHTML = act.filter((e) => e.day === curDay).reverse().map((e) => `<div class="row ${e.none ? "none" : ""} ${e.road ? "road" : ""}" data-i="${e.i}">
         <div class="rthumb ${e.kind}">${e.image ? `<img loading="lazy" src="${e.image}">` : `<span>${icon[e.kind]}</span>`}</div>
         <div class="rtx"><b>${this._esc(e.time.slice(0, 5))}${e.ann && e.ann.l && !e.none ? ` <em class="al ${e.ann.pv || e.ann.pz ? "known" : ""}">${this._esc(e.ann.l)}</em>` : ""}</b><span>${e.ann && e.ann.o ? this._esc(e.ann.o) : `${this._esc(this._disp(e._ck))}${e.count > 1 ? ` · ${e.count} klipa` : ""}${e.dur ? ` · ${this._esc(e.dur)}` : ""}`}</span>${e.ann && e.ann.o ? `<span class="rc">${this._esc(this._disp(e._ck))}</span>` : ""}</div>
         <span class="rk ${e.kind}">${e.none ? "ništa" : lab[e.kind]}</span></div>`).join("") || `<div class="empty">Nema događaja za ovaj dan.</div>`;
@@ -1010,7 +1013,7 @@ class WansviewNvrCard extends HTMLElement {
         const w = Math.max(8, ((G.e - G.s) / H) * s);
         const allNone = G.l.every((y) => y.none);
         const tip = G.l.map((y) => `${y.time.slice(0, 5)} ${y.ann && y.ann.l ? y.ann.l : ""}`).slice(0, 6).join("\n");
-        return `<div class="ev ${best.kind} ${allNone ? "none" : ""} ${G.l.some((y) => y.ann && (y.ann.pv || y.ann.pz)) ? "known" : ""}" title="${this._esc(tip)}" data-ev="${G.l[0].i}" data-evs="${G.l.map((y) => y.i).join(" ")}" style="left:${x(G.s)}px;width:${w}px">${G.l.length > 1 && w > 18 ? `<b>${G.l.length}</b>` : ""}</div>`;
+        return `<div class="ev ${best.kind} ${allNone ? "none" : ""} ${G.l.every((y) => y.road) ? "road" : ""} ${G.l.some((y) => y.ann && (y.ann.pv || y.ann.pz)) ? "known" : ""}" title="${this._esc(tip)}" data-ev="${G.l[0].i}" data-evs="${G.l.map((y) => y.i).join(" ")}" style="left:${x(G.s)}px;width:${w}px">${G.l.length > 1 && w > 18 ? `<b>${G.l.length}</b>` : ""}</div>`;
       }).join("")}</div>`;
     }).join("");
     const nowX = x(Date.now());
