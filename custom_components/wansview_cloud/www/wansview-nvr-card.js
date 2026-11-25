@@ -726,7 +726,7 @@ class WansviewNvrCard extends HTMLElement {
     // follow playback on the timeline
     vid.addEventListener("timeupdate", () => {
       const e = this._cur;
-      if (!e || vid.paused || Date.now() - (this._userAt || 0) < 800) return;
+      if (!e || vid.paused || Date.now() - (this._userAt || 0) < 800 || !(vid.currentSrc || "").includes((((e.videos && e.videos[0]) || e.video || e._url || "").split("?")[0]).slice(-30))) return;
       this._nvrSetCenter(e.ts + vid.currentTime * 1000);
     });
     vid.addEventListener("play", () => { this._nvrUi.play.textContent = "⏸"; });
@@ -853,6 +853,7 @@ class WansviewNvrCard extends HTMLElement {
     if (!src) { U.vid.style.display = "none"; return; }
     const off = Math.max(0, (this._tc - e.ts) / 1000);
     const go = () => {
+      if (this._cur !== e) return;
       try { if (off < (U.vid.duration || 1e9) - 0.5) U.vid.currentTime = off; } catch (x) {}
       U.vid.style.display = "block";
       if (play) U.vid.play().catch(() => {});
