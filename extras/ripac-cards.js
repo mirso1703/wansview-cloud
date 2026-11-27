@@ -402,7 +402,7 @@ class RipacUnaCard extends RipacBase {
       const dd = (t) => { const d = new Date(t), n = new Date(), tm = new Date(); tm.setDate(n.getDate() + 1); return d.toDateString() === n.toDateString() ? "danas" : d.toDateString() === tm.toDateString() ? "sutra" : DAYS[d.getDay()].toLowerCase(); };
       const hi = Math.round(this.attr(MODEL, "vrhunac_gornja_granica") || peak);
       const rain = this._rainText();
-      if (peak - l >= 1.5 && pred.peak[0] > Date.now() + 1800e3) {
+      if (parseFloat(this.st(MODEL)) - l >= 0.8 && pred.peak[0] > Date.now() + 2700e3) {
         txt = `${rain ? rain + " " : ""}Una još raste: vrh oko <b>${peak} cm</b> ${dd(pred.peak[0])} oko ${hmx(pred.peak[0])} (najviše ~${hi} cm), zatim opada na ~${end} cm za 3 dana.`;
         col = "#42a5f5"; icon = "mdi:trending-up";
       } else {
