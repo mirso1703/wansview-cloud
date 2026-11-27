@@ -644,11 +644,21 @@ class RipacCareCard extends RipacBase {
 const Q = "sensor.ripac_q0048088723771_ripac_";
 class RipacSolarCard extends RipacBase {
   set hass(h) { super.hass = h; if (this._str) this._str.hass = h; }
+  // kompaktni red: ručno punjenje baterije iz mreže (dugme, cilj −/+, stanje po BMS-u)
+  _mcRow(bat, soc, W) {
+    if (!this._hass.states["input_boolean.rucno_punjenje_baterije"]) return "";
+    const on = this.st("input_boolean.rucno_punjenje_baterije") === "on";
+    const to = Math.round(parseFloat(this.st("input_number.rucno_punjenje_do")) || 100);
+    const txt = on ? (bat > 20 ? `Puni se iz mreže · +${W(bat)} · ${Math.round(soc)} → ${to} %` : `Čekam inverter… · ${Math.round(soc)} → ${to} %`) : "Napuni bateriju iz mreže";
+    return `<div class="mc ${on ? "on" : ""} ${on && bat <= 20 ? "wait" : ""}">
+      <button class="mcb" data-tg="input_boolean.rucno_punjenje_baterije"><ha-icon icon="${on ? "mdi:battery-charging-high" : "mdi:battery-arrow-up-outline"}"></ha-icon><span>${txt}</span></button>
+      <div class="mct"><button data-do="-5">−</button><b>${to}%</b><button data-do="5">+</button></div></div>`;
+  }
   _watch() {
     return [Q + "solar_power", Q + "grid_power", Q + "output_power", Q + "battery_power", Q + "load_percentage", Q + "battery_voltage", Q + "energy_today",
       "sensor.baterija_soc_stabilno", "select.ripac_q0048088723771_ripac_output_priority", "sensor.tarifa_struje", "input_boolean.pametno_upravljanje_solarom",
       "sensor.energy_production_today", "sensor.energy_production_tomorrow", "sensor.baterije_energija_bms", "sensor.sh24100_h_01606_battery", "sensor.sh24100_h_01488_battery", "binary_sensor.visak_solara",
-      "sensor.sh24100_h_01606_power", "sensor.sh24100_h_01488_power"];
+      "sensor.sh24100_h_01606_power", "sensor.sh24100_h_01488_power", "input_boolean.rucno_punjenje_baterije", "input_number.rucno_punjenje_do"];
   }
   _render() {
     if (!this._hass) return;
@@ -731,11 +741,20 @@ class RipacSolarCard extends RipacBase {
       .kl { font-size:10.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; color:#a9b6cf; }
       .kv { font-size:16px; font-weight:800; margin-top:2px; } .kv small { font-size:11px; font-weight:600; color:#a9b6cf; }
       .ks { font-size:11px; color:#a9b6cf; margin-top:1px; }
+      .mc { display:flex; align-items:center; gap:6px; margin:0 0 10px; }
+      .mcb { flex:1; min-width:0; display:flex; align-items:center; gap:7px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05); color:#cfd8ea; border-radius:10px; padding:6px 10px; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; text-align:left; }
+      .mcb span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .mcb ha-icon { --mdc-icon-size:18px; flex:none; color:#8fa3c7; }
+      .mc.on .mcb { background:rgba(105,240,174,.14); border-color:rgba(105,240,174,.45); color:#b9f6ca; } .mc.on .mcb ha-icon { color:#69f0ae; }
+      .mc.wait .mcb { background:rgba(255,179,0,.12); border-color:rgba(255,179,0,.4); color:#ffe082; } .mc.wait .mcb ha-icon { color:#ffb300; }
+      .mct { display:flex; align-items:center; gap:2px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:2px; }
+      .mct button { width:26px; height:26px; border:0; border-radius:8px; background:transparent; color:#cfd8ea; font-size:16px; font-weight:700; cursor:pointer; }
+      .mct b { font-size:12px; min-width:34px; text-align:center; color:#cfd8ea; }
       .pb2 { height:4px; border-radius:2px; background:rgba(255,255,255,.1); margin-top:5px; overflow:hidden; } .pb2 i { display:block; height:100%; background:#ffca28; border-radius:2px; }
     </style><ha-card class="sol">
       <div class="top"><div class="hdr">${this._config.no_title ? `<div class="ttl" style="font-size:15px">${status}</div>` : `<div class="ttl">Solar i baterija</div><div class="sub">${status}</div>`}</div>
         <div class="pill" data-e="select.ripac_q0048088723771_ripac_output_priority" title="Režim invertera">${{ SOL: "☀️ Solar prvo", SBU: "🔋 Baterija prvo", SUB: "☀️ Solar → mreža", UTI: "🔌 Mreža prvo" }[mode.trim()] || esc(mode.trim())}</div>
         <div class="pill ai ${ai ? "on" : ""}" data-tg="input_boolean.pametno_upravljanje_solarom" title="${ai ? "Pametno upravljanje: uključeno" : "Pametno upravljanje: isključeno"}"><ha-icon icon="mdi:robot"></ha-icon>Pametno</div></div>
+      ${this._mcRow(bat, soc, W)}
       ${uses}
       ${svg}
       <div class="kp">
@@ -755,6 +774,11 @@ class RipacSolarCard extends RipacBase {
     }
     root.querySelectorAll("[data-e]").forEach((el) => el.addEventListener("click", () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: el.dataset.e }, bubbles: true, composed: true }))));
     root.querySelectorAll("[data-tg]").forEach((el) => el.addEventListener("click", () => this._hass.callService("homeassistant", "toggle", { entity_id: el.dataset.tg })));
+    root.querySelectorAll("[data-do]").forEach((el) => el.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const cur = parseFloat(this.st("input_number.rucno_punjenje_do")) || 100;
+      this._hass.callService("input_number", "set_value", { entity_id: "input_number.rucno_punjenje_do", value: Math.min(100, Math.max(50, cur + (+el.dataset.do))) });
+    }));
     root.querySelectorAll("[data-nav]").forEach((el) => el.addEventListener("click", () => { history.pushState(null, "", el.dataset.nav); window.dispatchEvent(new CustomEvent("location-changed")); }));
   }
 }
