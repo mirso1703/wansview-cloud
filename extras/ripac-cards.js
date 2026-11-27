@@ -415,7 +415,7 @@ class RipacUnaCard extends RipacBase {
       icon = end < l - 2 ? "mdi:trending-down" : "mdi:waves";
       txt = (this._rainText() ? this._rainText() + " " : "") + (end < l - 2 ? `Bez značajne kiše (${Math.round(rain3)} mm u 3 dana) – Una polako opada, oko <b>${end} cm</b> za 3 dana.` : `Bez značajne kiše – Una ostaje mirna oko <b>${Math.round(l)} cm</b>.`);
     }
-    const top = Math.max(peak, l);
+    const top = Math.max(pred.model ? parseFloat(this.st(MODEL)) : peak, l);
     if (top >= 205) { col = "#e53935"; icon = "mdi:home-flood"; txt += " <b>Put bi mogao biti poplavljen.</b>"; }
     else if (top >= 195) { col = "#ffb300"; icon = "mdi:alert"; txt += " Voda bi mogla izaći na put."; }
     else txt += " Put ostaje prohodan.";
@@ -519,7 +519,7 @@ class RipacUnaCard extends RipacBase {
           <ha-icon icon="${tr >= 3 ? "mdi:arrow-up-bold" : tr >= 1 ? "mdi:arrow-top-right" : tr <= -3 ? "mdi:arrow-down-bold" : tr <= -1 ? "mdi:arrow-bottom-right" : "mdi:arrow-right"}"></ha-icon>${Math.abs(tr) >= 1 ? `<small>${tr > 0 ? "+" : ""}${tr.toFixed(1)}</small>` : ""}</div>
         ${st ? `<div class="badge" style="--c:${c}">${st[1]}</div>` : ""}</div></div>
       ${this._spark(c, pred)}
-      ${ex ? `<div class="lbl">Šta očekivati</div><div class="exp" style="--c:${ex.col}"><svg class="wv b" viewBox="0 0 400 30" preserveAspectRatio="none"><path fill="currentColor" d="M0 15 Q 25 5 50 15 T 100 15 T 150 15 T 200 15 T 250 15 T 300 15 T 350 15 T 400 15 V 30 H 0 Z"/></svg><svg class="wv a" viewBox="0 0 400 30" preserveAspectRatio="none"><path fill="currentColor" d="M0 15 Q 25 5 50 15 T 100 15 T 150 15 T 200 15 T 250 15 T 300 15 T 350 15 T 400 15 V 30 H 0 Z"/></svg><div class="sym"><ha-icon icon="${ex.rain ? "mdi:weather-pouring" : ex.icon}"></ha-icon>${ex.rain ? `<span class="tr"><ha-icon icon="${ex.icon}"></ha-icon></span>` : ""}</div><div>${ex.txt}<small>Procjena iz prognoze kiše i uzvodnih stanica</small></div></div>` : ""}
+      ${ex ? `<div class="lbl">Šta očekivati</div><div class="exp" style="--c:${ex.col}"><svg class="wv b" viewBox="0 0 400 30" preserveAspectRatio="none"><path fill="currentColor" d="M0 15 Q 25 5 50 15 T 100 15 T 150 15 T 200 15 T 250 15 T 300 15 T 350 15 T 400 15 V 30 H 0 Z"/></svg><svg class="wv a" viewBox="0 0 400 30" preserveAspectRatio="none"><path fill="currentColor" d="M0 15 Q 25 5 50 15 T 100 15 T 150 15 T 200 15 T 250 15 T 300 15 T 350 15 T 400 15 V 30 H 0 Z"/></svg><div class="sym"><ha-icon icon="${ex.rain ? "mdi:weather-pouring" : ex.icon}"></ha-icon>${ex.rain ? `<span class="tr"><ha-icon icon="${ex.icon}"></ha-icon></span>` : ""}</div><div>${ex.txt}<small>${pred && pred.model ? `Samoučeći model (kiša, snijeg, uzvodne stanice, GloFAS)${this.st("sensor.prognoza_una_greska_12_h") && !isNaN(parseFloat(this.st("sensor.prognoza_una_greska_12_h"))) ? ` · prosječna greška ~${Math.round(parseFloat(this.st("sensor.prognoza_una_greska_12_h")))} cm za 12 h` : ""}` : "Procjena iz prognoze kiše i uzvodnih stanica"}</small></div></div>` : ""}
 
       ${wx.length ? `<div class="lbl">Vrijeme</div><div class="wk">${days}</div>` : ""}
       ${wrows ? `<div class="fc2" style="margin-top:8px">${wrows}</div>` : ""}
