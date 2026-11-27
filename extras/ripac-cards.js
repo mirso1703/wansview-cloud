@@ -681,7 +681,7 @@ class RipacSolarCard extends RipacBase {
     const visak = this.st("binary_sensor.visak_solara") === "on";
     const pvToday = n(Q + "energy_today"), fcToday = n("sensor.energy_production_today"), fcTom = n("sensor.energy_production_tomorrow");
     const W = (v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)} kW` : `${Math.round(v)} W`);
-    const status = (estim ? "⚠ DessMonitor kasni – baterija po BMS-u, mreža procjena. " : "") + (grid > 30 ? `Kuća je na mreži${bat > 20 ? (sol > 20 ? ", solar i mreža pune bateriju" : ", mreža puni bateriju") : sol > 20 ? ", solar puni bateriju" : ""}` : sol > 20 && sol >= load ? "Kuća radi na solaru" + (bat > 20 ? ", višak puni bateriju" : "") : "Kuća radi na bateriji");
+    const status = (estim ? "≈ " : "") + (grid > 30 ? `Kuća je na mreži${bat > 20 ? (sol > 20 ? ", solar i mreža pune bateriju" : ", mreža puni bateriju") : sol > 20 ? ", solar puni bateriju" : ""}` : sol > 20 && sol >= load ? "Kuća radi na solaru" + (bat > 20 ? ", višak puni bateriju" : "") : "Kuća radi na bateriji");
     const invUse = estim ? 60 : Math.max(0, sol + grid - bat - load);
     const uses = `<div class="use"><div class="ut"><span class="ul">Potrošnja</span><b>${W(load + invUse)}</b></div>
       <div class="ub"><i style="width:${load + invUse > 0 ? (load / (load + invUse)) * 100 : 100}%"></i><i class="iv" style="width:${load + invUse > 0 ? (invUse / (load + invUse)) * 100 : 0}%"></i></div>
@@ -751,7 +751,7 @@ class RipacSolarCard extends RipacBase {
       .mct b { font-size:12px; min-width:34px; text-align:center; color:#cfd8ea; }
       .pb2 { height:4px; border-radius:2px; background:rgba(255,255,255,.1); margin-top:5px; overflow:hidden; } .pb2 i { display:block; height:100%; background:#ffca28; border-radius:2px; }
     </style><ha-card class="sol">
-      <div class="top"><div class="hdr">${this._config.no_title ? `<div class="ttl" style="font-size:15px">${status}</div>` : `<div class="ttl">Solar i baterija</div><div class="sub">${status}</div>`}</div>
+      <div class="top"><div class="hdr" title="${estim ? "DessMonitor kasni – baterija po BMS-u, mreža je procjena" : ""}">${this._config.no_title ? `<div class="ttl" style="font-size:15px">${status}</div>` : `<div class="ttl">Solar i baterija</div><div class="sub">${status}</div>`}</div>
         <div class="pill" data-e="select.ripac_q0048088723771_ripac_output_priority" title="Režim invertera">${{ SOL: "☀️ Solar prvo", SBU: "🔋 Baterija prvo", SUB: "☀️ Solar → mreža", UTI: "🔌 Mreža prvo" }[mode.trim()] || esc(mode.trim())}</div>
         <div class="pill ai ${ai ? "on" : ""}" data-tg="input_boolean.pametno_upravljanje_solarom" title="${ai ? "Pametno upravljanje: uključeno" : "Pametno upravljanje: isključeno"}"><ha-icon icon="mdi:robot"></ha-icon>Pametno</div></div>
       ${this._mcRow(bat, soc, W)}
