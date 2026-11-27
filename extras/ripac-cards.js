@@ -217,6 +217,7 @@ class RipacSecurityCard extends RipacBase {
 
 const UNA = "sensor.hs_ripac_distance";
 const MODEL = "sensor.prognoza_una_vrhunac_72_h", MODEL12 = "sensor.prognoza_una_za_12_h";
+const SOL_T = "sensor.prognoza_solar_danas", SOL_M = "sensor.prognoza_solar_sutra", SOL_SNOW = "binary_sensor.prognoza_paneli_pod_snijegom";
 const UPSTREAM = [
   ["sensor.hs_martin_brod_vodostaj", "sensor.hs_martin_brod_porast_za_3_sata", "Martin Brod"],
   ["sensor.hs_kulen_vakuf_vodostaj", "sensor.hs_kulen_vakuf_porast_za_3_sata", "Kulen Vakuf"],
@@ -688,7 +689,7 @@ class RipacSolarCard extends RipacBase {
   _watch() {
     return [Q + "solar_power", Q + "grid_power", Q + "output_power", Q + "battery_power", Q + "load_percentage", Q + "battery_voltage", Q + "energy_today",
       "sensor.baterija_soc_stabilno", "select.ripac_q0048088723771_ripac_output_priority", "sensor.tarifa_struje", "input_boolean.pametno_upravljanje_solarom",
-      "sensor.energy_production_today", "sensor.energy_production_tomorrow", "sensor.baterije_energija_bms", "sensor.sh24100_h_01606_battery", "sensor.sh24100_h_01488_battery", "binary_sensor.visak_solara",
+      "sensor.energy_production_today", "sensor.energy_production_tomorrow", SOL_T, SOL_M, SOL_SNOW, "sensor.baterije_energija_bms", "sensor.sh24100_h_01606_battery", "sensor.sh24100_h_01488_battery", "binary_sensor.visak_solara",
       "sensor.sh24100_h_01606_power", "sensor.sh24100_h_01488_power", "input_boolean.rucno_punjenje_baterije", "input_number.rucno_punjenje_do"];
   }
   _render() {
@@ -710,7 +711,7 @@ class RipacSolarCard extends RipacBase {
     const tar = this.st("sensor.tarifa_struje") || "";
     const ai = this.st("input_boolean.pametno_upravljanje_solarom") === "on";
     const visak = this.st("binary_sensor.visak_solara") === "on";
-    const pvToday = n(Q + "energy_today"), fcToday = n("sensor.energy_production_today"), fcTom = n("sensor.energy_production_tomorrow");
+    const pvToday = n(Q + "energy_today"), mdl = !isNaN(parseFloat(this.st(SOL_T))), fcToday = mdl ? n(SOL_T) : n("sensor.energy_production_today"), fcTom = mdl ? n(SOL_M) : n("sensor.energy_production_tomorrow"), snow = this.st(SOL_SNOW) === "on";
     const W = (v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)} kW` : `${Math.round(v)} W`);
     const status = (estim ? "≈ " : "") + (grid > 30 ? `Kuća je na mreži${bat > 20 ? (sol > 20 ? ", solar i mreža pune bateriju" : ", mreža puni bateriju") : sol > 20 ? ", solar puni bateriju" : ""}` : sol > 20 && sol >= load ? "Kuća radi na solaru" + (bat > 20 ? ", višak puni bateriju" : "") : "Kuća radi na bateriji");
     const invUse = estim ? 60 : Math.max(0, sol + grid - bat - load);
@@ -790,9 +791,9 @@ class RipacSolarCard extends RipacBase {
       ${svg}
       <div class="kp">
         <div class="k" data-e="${Q}energy_today"><div class="kl">Solar danas</div><div class="kv">${pvToday.toFixed(1)} <small>kWh</small></div>
-          <div class="pb2"><i style="width:${fcToday ? Math.min(100, (pvToday / fcToday) * 100) : 0}%"></i></div><div class="ks">prognoza ${fcToday.toFixed(1)} kWh</div></div>
-        <div class="k" data-e="sensor.energy_production_tomorrow"><div class="kl">Sutra</div><div class="kv">${fcTom.toFixed(1)} <small>kWh</small></div>
-          <div class="ks">${fcTom >= 10 ? "☀️ dobar dan" : fcTom >= 4 ? "⛅ osrednje" : "☁️ slabo sunca"}</div></div>
+          <div class="pb2"><i style="width:${fcToday ? Math.min(100, (pvToday / fcToday) * 100) : 0}%"></i></div><div class="ks">${snow ? "❄️ snijeg na panelima · " : ""}moguće ${fcToday.toFixed(1)} kWh</div></div>
+        <div class="k" data-e="${mdl ? SOL_M : "sensor.energy_production_tomorrow"}"><div class="kl">Sutra</div><div class="kv">${fcTom.toFixed(1)} <small>kWh</small></div>
+          <div class="ks">${fcTom >= 8 ? "☀️ dobar dan" : fcTom >= 3 ? "⛅ osrednje" : "☁️ slabo sunca"}</div></div>
         <div class="k" data-nav="/ripac-odrzavanje/pregled"><div class="kl">Baterije</div><div class="kv">${(n("sensor.baterije_energija_bms") || soc / 100 * 6.4).toFixed(1)} <small>/ 6.4 kWh</small></div>
           <div class="ks">${["sh24100_h_01606", "sh24100_h_01488"].map((b) => this.st(`sensor.${b}_battery`)).filter((x) => x && !isNaN(x)).map((x) => Math.round(x) + "%").join(" · ") || "BMS –"} · ${esc(vnow ?? "–")} V</div>
           <div class="ks">${(() => { const c = ["sh24100_h_01606", "sh24100_h_01488"].map((b) => parseFloat(this.st(`sensor.${b}_cycles`))).filter((x) => !isNaN(x)); const t = parseFloat(this.st("sensor.baterije_najniza_temperatura")); return `${c.length ? Math.round(c.reduce((a, b) => a + b, 0) / c.length) + " ciklusa" : ""}${!isNaN(t) ? ` · ${t.toFixed(0)} °C` : ""}`; })()}</div></div>
@@ -1591,7 +1592,6 @@ class RipacStrujaKalibCard extends RipacStrujaCard {
   }
   async _load() {
     await super._load();
-    try { await this._solarLoad(); } catch (e) { this._solErr = e.message; }
     this._render();
   }
   // historija za učenje: prognoza po satu (sensor.energy_current_hour), stvarna proizvodnja po satu,
@@ -1755,22 +1755,36 @@ class RipacStrujaKalibCard extends RipacStrujaCard {
     });
   }
   _solarSec() {
-    const st = (e) => parseFloat((this._hass.states[e] || {}).state);
-    const k = st("input_number.solar_korekcija_prognoze") || 1, fs = st("input_number.solar_kal_prognoza") || 0, as = st("input_number.solar_kal_stvarno") || 0, n = st("input_number.solar_kal_sati") || 0;
-    const td = st("sensor.energy_production_today"), tm = st("sensor.energy_production_tomorrow");
+    const S = this._hass.states, st = (e) => parseFloat((S[e] || {}).state);
     const f1 = (v) => isNaN(v) ? "–" : v.toFixed(1).replace(".", ",");
-    const live = fs > 0 ? as / fs : null;
-    const ready = fs > 1.5;
+    const td = st(SOL_T), rem = st("sensor.prognoza_solar_preostalo_danas"), tm = st(SOL_M), d3 = st("sensor.prognoza_solar_prekosutra");
+    if (isNaN(td)) return `<div class="sec"><div class="st">Solarna prognoza</div><div class="note">Model još nije spreman (integracija Bihać Vodostaj → Prognoza).</div></div>`;
+    const A = (S[SOL_M] || {}).attributes || {};
+    const pv = st("sensor.ripac_q0048088723771_ripac_energy_today");
+    const snow = (S[SOL_SNOW] || {}).state === "on";
+    const prof = A.faktor_po_satu || {}, kAll = A.faktor_w_po_w_m2 || 0, NOM = 3.8;
+    const hrsP = Object.entries(prof).sort((x, y) => x[0] - y[0]);
+    const hourly = (A.po_satima || []).map((x) => ({ t: new Date(x.t), w: x.w }));
+    const mx = Math.max(100, ...hourly.map((x) => x.w));
+    const now = Date.now(), WD = ["ned", "pon", "uto", "sri", "čet", "pet", "sub"];
+    const days = [...new Set(hourly.map((x) => x.t.toDateString()))];
+    const chart = hourly.length ? `<div class="st" style="margin-top:12px">Po satu – moguća proizvodnja</div>
+      <div class="sdw">${days.map((d) => { const hs = hourly.filter((x) => x.t.toDateString() === d); const dd = new Date(d);
+        return `<div style="flex:1;min-width:0"><div style="display:flex;align-items:flex-end;gap:1px;height:70px">${hs.map((x) => `<i title="${String(x.t.getHours()).padStart(2, "0")}h · ${x.w} W" style="flex:1;display:block;background:${x.t.getTime() + 3600e3 < now ? "rgba(255,202,40,.35)" : "#ffca28"};border-radius:2px 2px 0 0;height:${Math.max(2, (x.w / mx) * 100)}%"></i>`).join("")}</div>
+        <div class="sl" style="text-align:center">${dd.toDateString() === new Date().toDateString() ? "danas" : WD[dd.getDay()] + " " + dd.getDate() + "."}</div></div>`; }).join("")}</div>` : "";
+    const shade = hrsP.length ? `<div class="st" style="margin-top:12px">Koliko paneli daju po satu (naučeno, % nazivne snage)</div>
+      <div class="hp">${hrsP.map(([hr, k]) => { const r = k / NOM;
+        return `<div class="hr"><span>${String(hr).padStart(2, "0")}h</span><div class="ht"><i style="width:${Math.min(100, r * 100)}%" class="${r < 0.3 ? "lo" : ""}"></i></div><b>${Math.round(r * 100)} %</b></div>`; }).join("")}</div>` : "";
     return `<div class="sec">
-        <div class="st">Kalibracija solarne prognoze</div>
+        <div class="st">Solarna prognoza (samoučeći model)</div>
         <div class="res" style="margin-top:0">
-          <div class="rr big"><span>Faktor prognoze</span><b>× ${k.toFixed(2).replace(".", ",")}</b><em>${ready ? `naučeno iz ${n} sati: stvarno ${f1(as)} kWh / prognoza ${f1(fs)} kWh` : `još učim – ${n} sati, treba ~1,5 kWh prognoze u satima kad baterija nije puna${live != null ? ` (trenutno × ${live.toFixed(2).replace(".", ",")})` : ""}`}</em></div>
-          <div class="rr"><span>Danas</span><b>${f1(td * k)} kWh</b><em>Forecast.Solar kaže ${f1(td)} kWh</em></div>
-          <div class="rr"><span>Sutra</span><b>${f1(tm * k)} kWh</b><em>Forecast.Solar kaže ${f1(tm)} kWh</em></div>
+          <div class="rr big"><span>Danas moguće</span><b>${f1(td)} kWh</b><em>proizvedeno ${f1(pv)} kWh · preostalo ~${f1(rem)} kWh${snow ? " · ❄️ snijeg na panelima" : ""}</em></div>
+          <div class="rr"><span>Sutra</span><b>${f1(tm)} kWh</b><em>Forecast.Solar kaže ${f1(st("sensor.energy_production_tomorrow"))} kWh</em></div>
+          <div class="rr"><span>Prekosutra</span><b>${f1(d3)} kWh</b><em>${A.snijeg_na_panelima_cm ? `procjena snijega na panelima ~${f1(A.snijeg_na_panelima_cm)} cm` : ""}</em></div>
+          <div class="rr"><span>Učenje</span><b>${A.sati_za_ucenje ?? 0} sati</b><em>${A.provjerenih_sati ? `prosječna greška po satu ~${A.greska_sat_w} W (${A.provjerenih_sati} provjera)` : "greška se mjeri od sutra (prognoza od večeri prije vs stvarno)"} · u prosjeku ${Math.round((kAll / NOM) * 100)} % nazivne snage</em></div>
         </div>
-        <div class="note">Svaki sat poredim prognozu za taj sat sa stvarnom proizvodnjom panela. Brojim samo sate kad baterija nije puna, jer puna baterija namjerno smanjuje proizvodnju. Starije dane polako zaboravljam (~1 sedmica), pa faktor prati i godišnje doba. Ispravljenu prognozu koristi automatizacija za noćno punjenje baterije.${ready && Math.abs(k - 1) > 0.15 ? ` Da Energy dashboard prikazuje istu prognozu, u Forecast.Solar postavi snagu panela na <b>~${Math.round(4500 * k / 50) * 50} W</b> (sada 4500 W).` : ""}</div>
-        ${this._solHist()}
-        ${n ? `<div class="row"><button class="ghost sreset">Kreni učiti ispočetka</button></div>` : ""}
+        ${chart}${shade}
+        <div class="note">Model uzima Open-Meteo zračenje na ravan panela (30°, jug) i za svaki sat u danu uči koliko paneli stvarno daju (sjena brda i drveća). Uči samo iz sati kad baterija nije puna i kad podaci iz DessMonitora nisu zaglavljeni, a starije dane polako zaboravlja (~3 sedmice). Snijeg na panelima procjenjuje iz padavina, temperature i sunca. Ovu prognozu koristi automatizacija za noćno punjenje baterije.</div>
       </div>`;
   }
   _solHist() {
