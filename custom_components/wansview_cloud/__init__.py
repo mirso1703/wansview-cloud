@@ -70,8 +70,14 @@ def _register_services(hass: HomeAssistant) -> None:
     if not hass.services.has_service(DOMAIN, "save_image"):
         import os
 
-        def _crop(data: bytes, box) -> bytes:
-            """box = [ymin, xmin, ymax, xmax] on a 0-1000 scale (Gemini style); pads 10 %."""
+        def _crop(data: bytes, box, old: bytes | None = None) -> bytes | None:
+            """box = [ymin, xmin, ymax, xmax] on a 0-1000 scale (Gemini style).
+
+            The crop keeps generous context around the animal (half the box on
+            each side, at least 30 % of the frame, 4:3), is enlarged to at least
+            640 px wide, and records the source pixel size in the JPEG comment.
+            With ``old`` given, returns None when the new crop is not sharper
+            than the saved one (fewer source pixels), so a good picture is kept."""
             from io import BytesIO
             from PIL import Image
             im = Image.open(BytesIO(data)).convert("RGB")
@@ -79,11 +85,31 @@ def _register_services(hass: HomeAssistant) -> None:
             y0, x0, y1, x1 = [max(0, min(1000, float(v))) for v in box]
             if y1 <= y0 or x1 <= x0:
                 return data
-            py, px = (y1 - y0) * 0.1, (x1 - x0) * 0.1
-            area = (int(max(0, x0 - px) * w / 1000), int(max(0, y0 - py) * h / 1000),
-                    int(min(1000, x1 + px) * w / 1000), int(min(1000, y1 + py) * h / 1000))
+            x0, x1, y0, y1 = x0 * w / 1000, x1 * w / 1000, y0 * h / 1000, y1 * h / 1000
+            cw, ch = (x1 - x0) * 2.0, (y1 - y0) * 2.0
+            cw = max(cw, ch * 4 / 3, w * 0.3)
+            ch = max(ch, cw * 3 / 4)
+            cw, ch = min(cw, w), min(ch, h)
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            left = min(max(0, cx - cw / 2), w - cw)
+            top = min(max(0, cy - ch / 2), h - ch)
+            crop = im.crop((int(left), int(top), int(left + cw), int(top + ch)))
+            src_px = crop.width * crop.height
+            if old:
+                try:
+                    prev = Image.open(BytesIO(old))
+                    c = prev.info.get("comment", b"")
+                    c = c.decode() if isinstance(c, bytes) else str(c)
+                    prev_px = int(c.split("src=")[1].split()[0]) if "src=" in c else 0
+                    if prev_px and src_px <= prev_px:
+                        return None
+                except Exception:  # noqa: BLE001
+                    pass
+            if crop.width < 640:
+                f = 640 / crop.width
+                crop = crop.resize((640, int(crop.height * f)), Image.LANCZOS)
             out = BytesIO()
-            im.crop(area).save(out, "JPEG", quality=88)
+            crop.save(out, "JPEG", quality=90, comment=f"src={src_px} frame={w}x{h}".encode())
             return out.getvalue()
 
         def _read(path: str) -> bytes:
@@ -124,17 +150,25 @@ def _register_services(hass: HomeAssistant) -> None:
                 raise HomeAssistantError("no image")
             box = call.data.get("box")
             if box and len(box) == 4:
+                old = None
+                if call.data.get("only_if_better") and os.path.isfile(path):
+                    old = await hass.async_add_executor_job(_read, path)
                 try:
-                    data = await hass.async_add_executor_job(_crop, data, box)
+                    cropped = await hass.async_add_executor_job(_crop, data, box, old)
                 except Exception as err:  # noqa: BLE001
                     _LOGGER.debug("crop failed: %s", err)
+                    cropped = data
+                if cropped is None:
+                    return {"filename": path, "bytes": 0, "kept": True}
+                data = cropped
             from .nvr import _write
             await hass.async_add_executor_job(_write, path, data)
             return {"filename": path, "bytes": len(data)}
 
         hass.services.async_register(DOMAIN, "save_image", save_image, schema=vol.Schema({
             vol.Optional("entity_id"): cv.entity_id, vol.Optional("source"): cv.string,
-            vol.Required("filename"): cv.string, vol.Optional("box"): list}),
+            vol.Required("filename"): cv.string, vol.Optional("box"): list,
+            vol.Optional("only_if_better", default=False): cv.boolean}),
             supports_response=SupportsResponse.OPTIONAL)
 
         def _latest(folder: str):

@@ -28,6 +28,9 @@ save_image:
       example: "[300, 200, 700, 600]"
       selector:
         object:
+    only_if_better:
+      selector:
+        boolean:
 latest_image:
   fields:
     camera:
