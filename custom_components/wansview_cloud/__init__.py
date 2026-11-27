@@ -171,6 +171,54 @@ def _register_services(hass: HomeAssistant) -> None:
             vol.Optional("only_if_better", default=False): cv.boolean}),
             supports_response=SupportsResponse.OPTIONAL)
 
+        async def video_frame(call: ServiceCall):
+            """Extract one full-resolution frame from a recording (waits for the
+            file to finish downloading), e.g. for sharp AI pictures."""
+            import asyncio
+            src = os.path.realpath(call.data["source"])
+            path = os.path.realpath(call.data["filename"])
+            if not _ok(src) or not _ok(path):
+                raise HomeAssistantError("source and filename must be under /media or /share")
+            if src.lower().endswith((".jpg", ".jpeg")):
+                src = src.rsplit(".", 1)[0] + ".mp4"
+            deadline = asyncio.get_running_loop().time() + float(call.data.get("wait", 0))
+            last = -1
+            while True:
+                size = await hass.async_add_executor_job(lambda: os.path.getsize(src) if os.path.isfile(src) else -1)
+                if size > 0 and size == last:
+                    break
+                if asyncio.get_running_loop().time() > deadline:
+                    if size > 0:
+                        break
+                    raise HomeAssistantError(f"no recording {src}")
+                last = size
+                await asyncio.sleep(3)
+            try:
+                from homeassistant.components.ffmpeg import get_ffmpeg_manager
+                binary = get_ffmpeg_manager(hass).binary
+            except Exception:  # noqa: BLE001
+                binary = "ffmpeg"
+            await hass.async_add_executor_job(lambda: os.makedirs(os.path.dirname(path), exist_ok=True))
+            proc = await asyncio.create_subprocess_exec(
+                binary, "-y", "-loglevel", "error", "-ss", str(float(call.data.get("at", 1.0))), "-i", src,
+                "-frames:v", "1", "-q:v", "2", path,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+            try:
+                _, err = await asyncio.wait_for(proc.communicate(), 60)
+            except TimeoutError:
+                proc.kill()
+                raise HomeAssistantError("ffmpeg timeout")
+            ok = await hass.async_add_executor_job(lambda: os.path.isfile(path) and os.path.getsize(path) > 0)
+            if proc.returncode != 0 or not ok:
+                raise HomeAssistantError(f"ffmpeg failed: {err.decode(errors='ignore')[:200]}")
+            size = await hass.async_add_executor_job(os.path.getsize, path)
+            return {"filename": path, "bytes": size, "video": src}
+
+        hass.services.async_register(DOMAIN, "video_frame", video_frame, schema=vol.Schema({
+            vol.Required("source"): cv.string, vol.Required("filename"): cv.string,
+            vol.Optional("at", default=1.0): vol.Coerce(float), vol.Optional("wait", default=0): vol.Coerce(float)}),
+            supports_response=SupportsResponse.OPTIONAL)
+
         def _latest(folder: str):
             best = None
             for root, _d, files in os.walk(folder):

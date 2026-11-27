@@ -38,3 +38,28 @@ latest_image:
       example: "Kuća Parking"
       selector:
         text:
+video_frame:
+  fields:
+    source:
+      required: true
+      example: "/media/wansview/Obala/2026-11-27/13-16-02.mp4"
+      selector:
+        text:
+    filename:
+      required: true
+      example: "/media/zivotinje/_kadar_obala.jpg"
+      selector:
+        text:
+    at:
+      example: 1.0
+      selector:
+        number:
+          min: 0
+          max: 60
+          step: 0.5
+    wait:
+      example: 60
+      selector:
+        number:
+          min: 0
+          max: 180
