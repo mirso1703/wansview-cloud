@@ -647,12 +647,23 @@ class RipacSolarCard extends RipacBase {
   _watch() {
     return [Q + "solar_power", Q + "grid_power", Q + "output_power", Q + "battery_power", Q + "load_percentage", Q + "battery_voltage", Q + "energy_today",
       "sensor.baterija_soc_stabilno", "select.ripac_q0048088723771_ripac_output_priority", "sensor.tarifa_struje", "input_boolean.pametno_upravljanje_solarom",
-      "sensor.energy_production_today", "sensor.energy_production_tomorrow", "sensor.baterije_energija_bms", "sensor.sh24100_h_01606_battery", "sensor.sh24100_h_01488_battery", "binary_sensor.visak_solara"];
+      "sensor.energy_production_today", "sensor.energy_production_tomorrow", "sensor.baterije_energija_bms", "sensor.sh24100_h_01606_battery", "sensor.sh24100_h_01488_battery", "binary_sensor.visak_solara",
+      "sensor.sh24100_h_01606_power", "sensor.sh24100_h_01488_power"];
   }
   _render() {
     if (!this._hass) return;
     const n = (e) => parseFloat(this.st(e)) || 0;
-    const sol = n(Q + "solar_power"), grid = n(Q + "grid_power"), load = n(Q + "output_power"), bat = n(Q + "battery_power"), soc = n("sensor.baterija_soc_stabilno");
+    const sol = n(Q + "solar_power"), load = n(Q + "output_power"), soc = n("sensor.baterija_soc_stabilno");
+    let grid = n(Q + "grid_power"), bat = n(Q + "battery_power");
+    // BMS (Bluetooth, u realnom vremenu) je pouzdaniji od DessMonitor clouda: 2×100 Ah imaju BMS, 50 Ah nema → ×1.25
+    const bmsE = ["sensor.sh24100_h_01606_power", "sensor.sh24100_h_01488_power"].map((e) => this._hass.states[e]);
+    const bmsFresh = bmsE.every((o) => o && !isNaN(parseFloat(o.state)) && Date.now() - new Date(o.last_updated).getTime() < 180000);
+    let estim = false;
+    if (bmsFresh) {
+      const bp = bmsE.reduce((a, o) => a + parseFloat(o.state), 0) * 1.25;
+      if (Math.abs(bp - bat) > 250) { estim = true; grid = Math.max(0, load + 60 + bp - sol); }
+      bat = bp;
+    }
     const inv = n(Q + "load_percentage");
     const mode = this.st("select.ripac_q0048088723771_ripac_output_priority") || "";
     const tar = this.st("sensor.tarifa_struje") || "";
@@ -660,8 +671,8 @@ class RipacSolarCard extends RipacBase {
     const visak = this.st("binary_sensor.visak_solara") === "on";
     const pvToday = n(Q + "energy_today"), fcToday = n("sensor.energy_production_today"), fcTom = n("sensor.energy_production_tomorrow");
     const W = (v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)} kW` : `${Math.round(v)} W`);
-    const status = grid > 30 ? `Kuća je na mreži${sol > 20 ? ", solar puni bateriju" : ""}` : sol > 20 && sol >= load ? "Kuća radi na solaru" + (bat > 20 ? ", višak puni bateriju" : "") : "Kuća radi na bateriji";
-    const invUse = Math.max(0, sol + grid - bat - load);
+    const status = (estim ? "⚠ DessMonitor kasni – baterija po BMS-u, mreža procjena. " : "") + (grid > 30 ? `Kuća je na mreži${bat > 20 ? (sol > 20 ? ", solar i mreža pune bateriju" : ", mreža puni bateriju") : sol > 20 ? ", solar puni bateriju" : ""}` : sol > 20 && sol >= load ? "Kuća radi na solaru" + (bat > 20 ? ", višak puni bateriju" : "") : "Kuća radi na bateriji");
+    const invUse = estim ? 60 : Math.max(0, sol + grid - bat - load);
     const uses = `<div class="use"><div class="ut"><span class="ul">Potrošnja</span><b>${W(load + invUse)}</b></div>
       <div class="ub"><i style="width:${load + invUse > 0 ? (load / (load + invUse)) * 100 : 100}%"></i><i class="iv" style="width:${load + invUse > 0 ? (invUse / (load + invUse)) * 100 : 0}%"></i></div>
       <div class="ulg"><span><em></em>kuća ${W(load)}</span><span><em class="iv"></em>inverter ${W(invUse)}</span></div></div>`;
