@@ -25,13 +25,53 @@ class WansviewNvrCard extends HTMLElement {
       if (ids.some((id) => old.states[id] !== hass.states[id])) this._render();
     }
     if (first) {
+      this._readDeep(true);
       this._load();
       this._timer = setInterval(() => this._load(), 60000);
     }
   }
 
+  connectedCallback() {
+    if (!this._onLoc) this._onLoc = () => setTimeout(() => this._readDeep(), 60);
+    window.addEventListener("location-changed", this._onLoc);
+    window.addEventListener("popstate", this._onLoc);
+    if (this._hass) this._readDeep();
+  }
+
   disconnectedCallback() {
     clearInterval(this._timer);
+    if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); window.removeEventListener("popstate", this._onLoc); }
+  }
+
+  // Deep link from a notification: ?cam=<camera>&t=<unix seconds | ISO> opens the
+  // timeline at that moment and plays the closest recording of that camera.
+  _readDeep(noLoad) {
+    const p = new URLSearchParams(location.search), t = p.get("t");
+    if (!t || t === this._deepT || this._config.recent === false) return;
+    const ts = /^\d+(\.\d+)?$/.test(t) ? (+t < 1e12 ? +t * 1000 : +t) : Date.parse(t);
+    if (isNaN(ts)) return;
+    this._deepT = t;
+    this._deep = { cam: (p.get("cam") || "").replace(/ Vikendica$/, ""), ts };
+    if (this._view !== "timeline") {
+      this._view = "timeline";
+      try { localStorage.setItem("wvnvr-view", "timeline"); } catch (e) { /* private mode */ }
+      this._nvrEl = null;
+    }
+    if (this._filter && this._deep.cam && this._filter !== this._deep.cam && !this._config.camera) this._filter = "";
+    if (!noLoad) this._load();
+  }
+
+  _deepGo() {
+    const d = this._deep, ev = (this._nv && this._nv.ev) || [];
+    if (!d || !ev.length) return;
+    this._deep = null;
+    const n = (x) => String(x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ vikendica$/, "");
+    const want = n(d.cam);
+    const pool = ev.filter((e) => !want || n(e._ck) === want || n(this._disp(e._ck)) === want || n(e._ck).startsWith(want));
+    const best = (pool.length ? pool : ev).reduce((b, x) => (!b || Math.abs(x.ts - d.ts) < Math.abs(b.ts - d.ts) ? x : b), null);
+    if (best && Math.abs(best.ts - d.ts) < 20 * 60000) this._nvrGo(best, true);
+    else this._nvrJump(d.ts);
+    try { this.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (e) { /* old browsers */ }
   }
 
   getCardSize() {
@@ -833,6 +873,7 @@ class WansviewNvrCard extends HTMLElement {
     if (this._tc == null) this._tc = ev.length ? ev[ev.length - 1].ts : now;
     this._nvrDraw();
     if (firstLoad) this._nvrSeek(false);
+    if (this._deep) setTimeout(() => this._deepGo(), 50);
   }
 
   _nvrZoomTo(pph) {
