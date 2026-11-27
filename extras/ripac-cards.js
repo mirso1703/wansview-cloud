@@ -216,6 +216,7 @@ class RipacSecurityCard extends RipacBase {
 }
 
 const UNA = "sensor.hs_ripac_distance";
+const MODEL = "sensor.prognoza_una_vrhunac_72_h", MODEL12 = "sensor.prognoza_una_za_12_h";
 const UPSTREAM = [
   ["sensor.hs_martin_brod_vodostaj", "sensor.hs_martin_brod_porast_za_3_sata", "Martin Brod"],
   ["sensor.hs_kulen_vakuf_vodostaj", "sensor.hs_kulen_vakuf_porast_za_3_sata", "Kulen Vakuf"],
@@ -233,7 +234,7 @@ const DAYS = ["ned", "pon", "uto", "sri", "čet", "pet", "sub"];
 
 class RipacUnaCard extends RipacBase {
   _watch() {
-    return [UNA, "sensor.hs_ripac", "sensor.una_prognoza", "input_number.kisa_prognoza_24h", "sensor.meteoalarm_bih_nivo_upozorenja", "weather.home", ...UPSTREAM.flat()];
+    return [UNA, MODEL, "sensor.hs_ripac", "sensor.una_prognoza", "input_number.kisa_prognoza_24h", "sensor.meteoalarm_bih_nivo_upozorenja", "weather.home", ...UPSTREAM.flat()];
   }
   set hass(h) {
     super.hass = h;
@@ -256,6 +257,10 @@ class RipacUnaCard extends RipacBase {
         hist = fill.concat(hist);
       } catch (e) {}
       this._hist = hist;
+      try {
+        const r12 = await this._hass.callWS({ type: "history/history_during_period", start_time: new Date(Date.now() - 60 * 3600e3).toISOString(), entity_ids: [MODEL12], minimal_response: true, no_attributes: true });
+        this._past12 = (r12[MODEL12] || []).map((p) => [(p.lu || p.lc) * 1000 + 12 * 3600e3, parseFloat(p.s)]).filter((p) => !isNaN(p[1]) && p[0] <= Date.now() + 1800e3);
+      } catch (e) {}
       this._render();
     } catch (e) {}
   }
@@ -270,6 +275,15 @@ class RipacUnaCard extends RipacBase {
   }
   // simple river model: rain of a day lifts the Una partly the same day, mostly the next; without rain it recedes at the recent rate
   _predict(l, wx) {
+    const ser = this.attr(MODEL, "prognoza");
+    if (Array.isArray(ser) && ser.length > 3 && !isNaN(parseFloat(this.st(MODEL)))) {
+      const pts = ser.map((p) => [new Date(p.t).getTime(), p.cm, p.lo, p.hi]).filter((p) => p[0] >= Date.now() - 3 * 3600e3);
+      pts[0] = [Date.now(), l, l, l];
+      const pt = this.attr(MODEL, "vrijeme_vrhunca");
+      const peak = [pt ? new Date(pt).getTime() : pts[0][0], parseFloat(this.st(MODEL))];
+      const days = wx.slice(0, 3).map((d) => d.precipitation || 0);
+      return { pts, peak, days, model: true };
+    }
     const pts = this._hist || [];
     let decay = -4;
     if (pts.length > 2) {
@@ -298,7 +312,7 @@ class RipacUnaCard extends RipacBase {
     const H0 = 48, H1 = 72, span = (H0 + H1) * 3600 * 1000;
     const t0 = Date.now() - H0 * 3600 * 1000;
     const fut = pred ? pred.pts : [];
-    const vals = pts.map((p) => p[1]).concat(fut.map((p) => p[1]));
+    const vals = pts.map((p) => p[1]).concat(fut.map((p) => p[1])).concat(fut.map((p) => p[3] != null ? p[3] : p[1])).concat(fut.map((p) => p[2] != null ? p[2] : p[1]));
     const lo = Math.floor((Math.min(...vals) - 10) / 10) * 10, hi = Math.max(Math.ceil((Math.max(...vals) + 10) / 10) * 10, 210);
     const W = Math.max(280, Math.round(this._cw || 320)), H = 130, top = 8, bot = 22, left = 26;
     const x = (t) => left + ((t - t0) / span) * (W - left);
@@ -306,6 +320,9 @@ class RipacUnaCard extends RipacBase {
     const nowX = x(Date.now());
     const past = pts.map((p) => [Math.max(p[0], t0), p[1]]).map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("") + `L${nowX.toFixed(1)},${y(pts[pts.length - 1][1]).toFixed(1)}`;
     const futLine = fut.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("");
+    const band = pred && pred.model ? fut.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[3]).toFixed(1)}`).join("") + fut.slice().reverse().map((p) => `L${x(p[0]).toFixed(1)},${y(p[2]).toFixed(1)}`).join("") + "Z" : "";
+    const p12 = (this._past12 || []).filter((p) => p[0] >= t0);
+    const pastFc = p12.length > 1 ? p12.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("") : "";
     const base = H - bot;
     const grid = [];
     for (let v = lo; v <= hi; v += (hi - lo) > 80 ? 20 : 10)
@@ -327,17 +344,19 @@ class RipacUnaCard extends RipacBase {
       ${grid.join("")}
       <rect x="${nowX}" y="${top}" width="${W - nowX}" height="${base - top}" fill="rgba(127,127,127,.06)"/>
       ${bars}
-      ${thr(195, "#ffb300")}${thr(205, "#e53935")}${thr(250, "#b71c1c")}
+      ${thr(195, "#ffb300")}${thr(205, "#e53935")}${thr(230, "#b71c1c")}
+      ${band ? `<path d="${band}" fill="#64b5f6" opacity=".16"/>` : ""}
+      ${pastFc ? `<path d="${pastFc}" fill="none" stroke="var(--secondary-text-color)" stroke-width="1.3" stroke-dasharray="2 3" opacity=".8"/>` : ""}
       <path d="${past}L${nowX},${base}L${x(t0)},${base}Z" fill="url(#ug)"/>
       <path d="${past}" fill="none" stroke="${c}" stroke-width="2.2" stroke-linejoin="round"/>
-      ${futLine ? `<path d="${futLine}L${x(fut[fut.length - 1][0])},${base}L${nowX},${base}Z" fill="url(#fg)"/><path d="${futLine}" fill="none" stroke="#64b5f6" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ""}
+      ${futLine ? `${band ? "" : `<path d="${futLine}L${x(fut[fut.length - 1][0])},${base}L${nowX},${base}Z" fill="url(#fg)"/>`}<path d="${futLine}" fill="none" stroke="#64b5f6" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ""}
       <line x1="${nowX}" x2="${nowX}" y1="${top}" y2="${base}" stroke="var(--primary-text-color)" stroke-opacity=".35"/>
       <circle cx="${nowX}" cy="${y(pts[pts.length - 1][1])}" r="4" fill="${c}" stroke="#fff" stroke-width="1.5"/>
       ${pk ? (() => { const lx = Math.min(W - 24, Math.max(left + 24, x(pk[0]))); return `<circle cx="${x(pk[0])}" cy="${y(pk[1])}" r="3.5" fill="${pkCol}"/><rect x="${lx - 22}" y="${y(pk[1]) - 19}" width="44" height="13" rx="6" fill="${pkCol}"/>
         <text x="${lx}" y="${y(pk[1]) - 10}" text-anchor="middle" font-size="8.5" font-weight="800" fill="#111">~${Math.round(pk[1])} cm</text>`; })() : ""}
       ${xl}
     </svg>
-    <div class="legend2"><span><i style="background:${c}"></i>izmjereno</span><span><i class="d"></i>procjena po prognozi kiše</span><span><i style="background:#42a5f5;opacity:.5"></i>kiša</span><span><i style="background:#ffb300"></i>195 voda na putu</span><span><i style="background:#e53935"></i>205 put plavi</span></div>`;
+    <div class="legend2"><span><i style="background:${c}"></i>izmjereno</span><span><i class="d"></i>${pred && pred.model ? "prognoza modela (pojas: vjerovatni raspon)" : "procjena po prognozi kiše"}</span>${pastFc ? `<span><i style="background:var(--secondary-text-color);opacity:.6"></i>ranija prognoza 12 h unaprijed</span>` : ""}<span><i style="background:#42a5f5;opacity:.5"></i>kiša</span><span><i style="background:#ffb300"></i>195 voda na putu</span><span><i style="background:#e53935"></i>205 put plavi</span><span><i style="background:#b71c1c"></i>230 oko kuće</span></div>`;
   }
   // rough expectation for the next 2-3 days from forecast rain, current trend and upstream stations
   _rainSpells() {
@@ -377,6 +396,18 @@ class RipacUnaCard extends RipacBase {
     if (wave.length) {
       txt = `Uzvodno brzo raste (${wave.map(([n, d]) => `${n} +${Math.round(d)} cm`).join(", ")}) – val stiže do Ripča za 4–9 h.`;
       col = "#ffb300"; icon = "mdi:waves-arrow-up";
+    } else if (pred.model) {
+      const hmx = (t) => new Date(t).toLocaleTimeString("bs-BA", { hour: "2-digit", minute: "2-digit" });
+      const dd = (t) => { const d = new Date(t), n = new Date(), tm = new Date(); tm.setDate(n.getDate() + 1); return d.toDateString() === n.toDateString() ? "danas" : d.toDateString() === tm.toDateString() ? "sutra" : DAYS[d.getDay()].toLowerCase(); };
+      const hi = Math.round(this.attr(MODEL, "vrhunac_gornja_granica") || peak);
+      const rain = this._rainText();
+      if (peak - l >= 1.5 && pred.peak[0] > Date.now() + 1800e3) {
+        txt = `${rain ? rain + " " : ""}Una još raste: vrh oko <b>${peak} cm</b> ${dd(pred.peak[0])} oko ${hmx(pred.peak[0])} (najviše ~${hi} cm), zatim opada na ~${end} cm za 3 dana.`;
+        col = "#42a5f5"; icon = "mdi:trending-up";
+      } else {
+        icon = end < l - 2 ? "mdi:trending-down" : "mdi:waves";
+        txt = `${rain ? rain + " " : ""}${end < l - 2 ? `Una opada – oko <b>${end} cm</b> za 3 dana.` : `Una ostaje mirna oko <b>${Math.round(l)} cm</b>.`}`;
+      }
     } else if (peak - l >= 3) {
       txt = `${this._rainText() || ""} Ukupno ~${Math.round(rain3)} mm u 3 dana, pa bi Una mogla porasti do oko <b>${peak} cm</b>${pkDay ? ` (${pkDay})` : ""}.`;
       col = "#42a5f5"; icon = "mdi:trending-up";
@@ -396,7 +427,7 @@ class RipacUnaCard extends RipacBase {
     if (!this._hass) return;
     const l = parseFloat(this.st(UNA));
     const tr = parseFloat(this.st("sensor.hs_ripac")) || 0;
-    const st = isNaN(l) ? null : l >= 250 ? ["#b71c1c", "PLACEVI", "voda na placevima"] : l >= 205 ? ["#e53935", "POPLAVA", "put poplavljen"] : l >= 195 ? ["#ffb300", "PRIPREMNO", "voda na putu"] : ["#43a047", "NORMALNO", "put suh i prohodan"];
+    const st = isNaN(l) ? null : l >= 230 ? ["#b71c1c", "OKO KUĆE", "voda oko kuće"] : l >= 205 ? ["#e53935", "POPLAVA", "put poplavljen"] : l >= 195 ? ["#ffb300", "PRIPREMNO", "voda na putu"] : ["#43a047", "NORMALNO", "put suh i prohodan"];
     const c = st ? st[0] : "#888";
     const trend = tr >= 1 ? `raste ${tr.toFixed(1)} cm/h` : tr <= -1 ? `opada ${Math.abs(tr).toFixed(1)} cm/h` : "miruje";
     const prog = this.st("sensor.una_prognoza") || "";
